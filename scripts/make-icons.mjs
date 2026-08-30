@@ -102,56 +102,61 @@ await shoot(iconHtml(0.72), { width: 512, height: 512, path: join(OUT, 'icon-mas
 await shoot(iconHtml(0.82), { width: 180, height: 180, path: join(OUT, 'apple-touch-icon.png'), scale: 2 });
 
 // ---- share card ------------------------------------------------------------
-const wave = (flip) => {
-  const bars = Array.from({ length: 34 }, (_, i) => {
-    // Deliberately lopsided — quiet at the start, loud at the end. A symmetric
-    // envelope would look identical once mirrored, and the mirroring is the
-    // entire point of the picture.
-    const t = i / 33;
-    const hump = Math.sin(t * Math.PI * 3.1) ** 2;
-    const ramp = 0.18 + 0.82 * t;
-    const h = 6 + hump * ramp * 52 * (0.6 + 0.4 * Math.sin(i * 2.7));
-    return `<rect x="${i * 12}" y="${30 - Math.abs(h) / 2}" width="6" height="${Math.abs(h)}" rx="3"/>`;
-  }).join('');
-  return `<svg class="wave ${flip ? 'flip' : ''}" viewBox="0 0 408 60" width="340" height="50">${bars}</svg>`;
+// One idea, readable at chat-bubble size: a waveform and its exact reflection.
+// The mirror IS the game — say something (tomato, above the line), and the
+// game hands it back reversed (teal, below). Everything else on the card is
+// just the name and where to play.
+
+// A speech-like envelope: quiet lead-in, three growing syllable humps, hard
+// stop. Deliberately lopsided so the mirror image is unmistakably different
+// from the original — a symmetric blob would mirror into itself and the whole
+// point would vanish.
+const ENVELOPE = [
+  4, 6, 10, 18, 30, 44, 38, 26, 14, 8,
+  12, 34, 62, 88, 74, 52, 30, 16, 10, 22,
+  48, 92, 128, 142, 118, 84, 54, 30, 14, 6,
+];
+const OG_BAR = 24;
+const OG_GAP = 14;
+const ogWaveWidth = ENVELOPE.length * (OG_BAR + OG_GAP) - OG_GAP;
+const ogWave = (fill, cls) => {
+  const rects = ENVELOPE.map((h, i) =>
+    `<rect x="${i * (OG_BAR + OG_GAP)}" y="${150 - h}" width="${OG_BAR}" height="${h}" rx="${OG_BAR / 2}" fill="${fill}"/>`
+  ).join('');
+  return `<svg class="wave ${cls}" viewBox="0 0 ${ogWaveWidth} 150" width="${ogWaveWidth}" height="150" preserveAspectRatio="none">${rects}</svg>`;
 };
 
 const ogHtml = page(`
   <div class="card">
-    <div class="glow"></div>
     <header>
-      <div class="badge">${mark(1)}</div>
-      <div>
-        <h1>Sdrawkcab</h1>
-        <p class="tag">Talk backwards. Badly.</p>
-      </div>
+      <h1>Sdrawkcab</h1>
+      <p class="tag">Talk backwards. Badly.</p>
     </header>
-    <ol class="steps">
-      <li><span>1</span> Say a phrase ${wave(false)}</li>
-      <li class="rev"><span>2</span> Hear it backwards ${wave(true)}</li>
-      <li class="rev"><span>3</span> Say the gibberish ${wave(true)}</li>
-      <li><span>4</span> Flip it back ${wave(false)}</li>
-    </ol>
+    <div class="mirror">
+      <div class="row fwd">${ogWave(MARK, '')}<span class="lbl lbl-fwd">you</span></div>
+      <div class="line"></div>
+      <div class="row rev">${ogWave(TEAL, 'flip')}<span class="lbl lbl-rev">the game</span></div>
+    </div>
     <p class="foot">sdrawkcab.netlify.app</p>
   </div>`,
-  `.card{position:relative;width:1200px;height:630px;padding:50px 62px;display:flex;flex-direction:column;overflow:hidden;background:${PAGE_BG}}
-   .glow{display:none}
-   header{display:flex;align-items:center;gap:28px;position:relative}
-   .badge{width:112px;height:112px;border-radius:26px;overflow:hidden;flex:none;box-shadow:0 6px 0 ${PAGE_BORDER}}
-   .badge svg{width:100%;height:100%;display:block}
-   h1{font-family:'Archivo Black',sans-serif;font-size:76px;line-height:1;letter-spacing:-.02em;
-      color:${PAGE_INK};text-shadow:4px 4px 0 ${MARK}}
-   .tag{font-size:28px;color:${PAGE_MUTED};margin-top:10px}
-   .steps{list-style:none;margin:38px 0 0;display:grid;gap:12px;position:relative}
-   .steps li{display:flex;align-items:center;gap:18px;font-size:27px;color:${PAGE_INK};
-     background:${PAGE_SURFACE};border:2px solid ${PAGE_BORDER};border-radius:18px;padding:11px 22px}
-   .steps li span{width:38px;height:38px;border-radius:50%;background:${MARK};color:#fff;
-     display:grid;place-items:center;font-weight:700;font-size:20px;flex:none}
-   .steps li.rev span{background:${TEAL};color:#fff}
-   .wave{margin-left:auto;fill:${MARK};flex:none}
-   .steps li.rev .wave{fill:${TEAL}}
-   .wave.flip{transform:scaleX(-1)}
-   .foot{margin-top:auto;padding-top:18px;font-size:24px;color:${PAGE_MUTED};letter-spacing:.04em}`);
+  `.card{position:relative;width:1200px;height:630px;background:${PAGE_BG};overflow:hidden;
+     display:flex;flex-direction:column;padding:56px 64px 40px}
+   h1{font-family:'Archivo Black',sans-serif;font-size:126px;line-height:.94;letter-spacing:-.02em;
+     color:${PAGE_INK};text-shadow:5px 5px 0 ${MARK}}
+   .tag{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:37px;color:${PAGE_MUTED};margin-top:16px}
+   .mirror{flex:1;display:flex;flex-direction:column;justify-content:center;margin-top:8px}
+   .row{position:relative;height:130px;display:flex;align-items:flex-end}
+   .row.rev{align-items:flex-start}
+   .wave{width:100%;height:130px;display:block}
+   /* Reflection through the line = flipped in both axes: horizontally because
+      the audio is reversed in time, vertically because it hangs below. */
+   .wave.flip{transform:scale(-1,-1)}
+   .line{height:4px;background:${PAGE_INK};border-radius:2px;margin:10px 0}
+   .lbl{position:absolute;right:0;font:700 27px 'Space Grotesk',sans-serif;
+     padding:6px 18px;border-radius:999px;color:#FFFDF7}
+   .lbl-fwd{top:-12px;background:${MARK}}
+   .lbl-rev{bottom:-12px;background:${TEAL}}
+   .foot{font:500 26px 'Space Grotesk',sans-serif;color:${PAGE_MUTED};letter-spacing:.03em;text-align:right}`);
 
 await shoot(ogHtml, { width: 1200, height: 630, path: join(OUT, 'og.png') });
 
