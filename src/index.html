@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12101a">
+<title>Sdrawkcab — talk backwards, badly</title>
+<meta name="description" content="Say a phrase. Hear it backwards. Say the backwards bit. Hear that backwards. A party game for your mouth.">
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="./app.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<a class="skip-link" href="#stage">Skip to the game</a>
+
+<header class="topbar">
+  <h1 class="wordmark" aria-label="Sdrawkcab"><span aria-hidden="true">Sdrawkcab</span></h1>
+  <button type="button" class="icon-btn" id="help-btn" aria-haspopup="dialog">
+    <span aria-hidden="true">?</span><span class="sr-only">How to play</span>
+  </button>
+</header>
+
+<main id="stage">
+  <p class="tagline" id="tagline"></p>
+
+  <ol class="steps" id="steps">
+    <!-- Steps are rendered by game.js so the copy lives in exactly one place. -->
+  </ol>
+
+  <section class="result" id="result" hidden aria-live="polite">
+    <p class="result-kicker" id="result-kicker"></p>
+    <div class="score-ring" id="score-ring">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="score-track" cx="60" cy="60" r="52"></circle>
+        <circle class="score-fill" id="score-fill" cx="60" cy="60" r="52"></circle>
+      </svg>
+      <output class="score-number" id="score-number" for="steps">0</output>
+    </div>
+    <h2 class="result-title" id="result-title"></h2>
+    <p class="result-quip" id="result-quip"></p>
+
+    <div class="compare">
+      <p class="compare-label">What you said <span>vs</span> what came back</p>
+      <div class="wave-box compare-box">
+        <canvas id="compare-wave" aria-label="Your original recording overlaid with your reversed imitation"></canvas>
+      </div>
+      <div class="compare-legend">
+        <span class="key key-ghost"></span> the original
+        <span class="key key-solid"></span> your attempt
+      </div>
+    </div>
+
+    <div class="result-actions">
+      <button type="button" class="btn btn-primary" id="again-btn"></button>
+      <button type="button" class="btn btn-ghost" id="share-btn"></button>
+    </div>
+    <p class="streak" id="streak"></p>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog class="sheet" id="help-sheet">
+  <h2>How to play</h2>
+  <ol class="how-list" id="how-list"></ol>
+  <button type="button" class="btn btn-primary" id="help-close">Got it</button>
+</dialog>
+
+<dialog class="sheet" id="blocker-sheet">
+  <h2 id="blocker-title"></h2>
+  <p id="blocker-body"></p>
+  <button type="button" class="btn btn-primary" id="blocker-close">OK</button>
+</dialog>
+
+<canvas class="confetti" id="confetti" aria-hidden="true"></canvas>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

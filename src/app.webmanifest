@@ -1,0 +1,10 @@
+{
+  "name": "Sdrawkcab",
+  "short_name": "Sdrawkcab",
+  "description": "Talk backwards. Badly.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#12101a",
+  "theme_color": "#12101a",
+  "icons": [{ "src": "./assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

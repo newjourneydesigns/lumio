@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sdrawkcab">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff4d6d"/>
+      <stop offset="1" stop-color="#4de1ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#12101a"/>
+  <!-- a play head pointing the wrong way, over a waveform -->
+  <path d="M40 18 L40 46 L20 32 Z" fill="url(#g)"/>
+  <g fill="#f6f4ff" opacity=".85">
+    <rect x="44" y="27" width="3.4" height="10" rx="1.7"/>
+    <rect x="50" y="22" width="3.4" height="20" rx="1.7"/>
+  </g>
+</svg>
