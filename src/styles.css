@@ -1,26 +1,51 @@
-/* Sdrawkcab — phone-first, one giant action at a time. */
+/* Sdrawkcab — phone-first, one giant action at a time.
+ *
+ * Deliberately flat: no gradients, no glow, no glass. Colour comes from solid
+ * blocks and a hard offset shadow under each control, so the buttons read as
+ * physical things you press rather than as lit surfaces.
+ *
+ * Every colour in this file is a token. Swapping the palette means editing the
+ * block below and nothing else — the JS reads its canvas and confetti colours
+ * from these same variables.
+ */
 
 :root {
-  --bg: #12101a;
-  --bg-glow: radial-gradient(120% 80% at 50% -10%, #2a2140 0%, #12101a 60%);
-  --surface: #1c1a29;
-  --surface-2: #262336;
-  --surface-3: #322e46;
-  --ink: #f6f4ff;
-  --muted: #a9a3c4;
-  --muted-dim: #6f6a8a;
-  --accent: #ff4d6d;
-  --accent-ink: #2a0410;
-  --accent-2: #4de1ff;
-  --success: #58e08b;
-  --warn: #ffc94d;
+  /* -- palette: "Game Night" — butter yellow, deep navy, tomato, teal.
+        Every value below clears WCAG AA against the surface it is used on;
+        the accent and teal are each a few percent darker than their pure form
+        purely so white button text passes 4.5:1. -- */
+  --bg: #FFF3D2;
+  --surface: #FFFDF7;
+  --surface-2: #FCEBC0;
+  --border: #EBD79C;
+  --border-strong: #C9AE66;
 
-  --radius: 18px;
-  --radius-lg: 26px;
+  --ink: #16305C;
+  --muted: #4A5F87;
+  --muted-dim: #5A6885;
+
+  --accent: #D6392E;
+  --accent-shade: #A02318;
+  --accent-ink: #FFFFFF;
+
+  --accent-2: #0C8076;
+  --accent-2-shade: #075A53;
+  --accent-2-ink: #FFFFFF;
+
+  --success: #12784E;
+  --success-shade: #0B5A3A;
+  --success-ink: #FFFFFF;
+  --warn: #C77600;
+
+  --wave-bed: #FBE9BE;
+  --ghost: #79869D;
+  --scrim: rgba(22, 48, 92, .58);
+
+  /* -- shape -- */
+  --radius: 16px;
+  --radius-lg: 22px;
   --pad: 16px;
-
-  --shadow-lift: 0 10px 30px rgba(0, 0, 0, .45);
-  --shadow-press: 0 3px 0 rgba(0, 0, 0, .35);
+  --lift: 4px;               /* how far a control sits above its shadow */
 
   --ease-out: cubic-bezier(.2, .8, .3, 1);
   --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
@@ -63,8 +88,6 @@ html, body {
 }
 
 body {
-  background-image: var(--bg-glow);
-  background-attachment: fixed;
   min-height: 100svh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            calc(env(safe-area-inset-bottom) + 24px) env(safe-area-inset-left);
@@ -111,20 +134,18 @@ body {
   font-family: var(--font-display);
   font-size: clamp(1.35rem, 6vw, 1.7rem);
   letter-spacing: -.02em;
-  /* Same saturated violet mid-stop as the app icon: pink straight to cyan
-     passes through a washed-out grey in the middle of the word. */
-  background: linear-gradient(92deg, #ff3d63 6%, #c14ff0 50%, #35ddff 94%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* A hard offset shadow, like screen printing on a toy box. A gradient here
+     is what made the whole app read as machine-made. */
+  color: var(--ink);
+  text-shadow: 2px 2px 0 var(--accent);
 }
 
 .icon-btn {
   flex: none;
-  width: 40px; height: 40px; border-radius: 50%;
-  border: 1px solid var(--surface-3);
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--border);
   background: var(--surface);
-  color: var(--muted);
+  color: var(--ink);
   font: 700 1.05rem/1 var(--font-ui);
   cursor: pointer;
   transition: color .15s, border-color .15s, transform .15s var(--ease-out);
@@ -161,7 +182,7 @@ body {
 
 .step {
   background: var(--surface);
-  border: 1px solid var(--surface-2);
+  border: 2px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px;
   transition: opacity .25s var(--ease-out), border-color .25s, background .25s, transform .25s var(--ease-out);
@@ -172,9 +193,9 @@ body {
 .step[data-state='locked'] .step-primary,
 .step[data-state='locked'] .step-extras { display: none; }
 .step[data-state='active'] {
-  border-color: var(--accent);
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  box-shadow: var(--shadow-lift);
+  border-color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 var(--lift) 0 var(--border-strong);
 }
 .step[data-state='done'] { opacity: .82; }
 
@@ -186,12 +207,12 @@ body {
   flex: none;
   width: 26px; height: 26px; border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--surface-3); color: var(--muted);
+  background: var(--surface-2); color: var(--muted);
   font-size: .8rem; font-weight: 700;
   transition: background .25s, color .25s;
 }
 .step[data-state='active'] .step-num { background: var(--accent); color: var(--accent-ink); }
-.step[data-state='done'] .step-num { background: var(--success); color: #06240f; }
+.step[data-state='done'] .step-num { background: var(--success); color: var(--success-ink); }
 
 .step-title {
   margin: 0;
@@ -215,7 +236,7 @@ body {
   margin-top: 12px;
   height: 76px;
   border-radius: var(--radius);
-  background: #14121f;
+  background: var(--wave-bed);
   border: 1px solid var(--surface-2);
   overflow: hidden;
 }
@@ -232,7 +253,7 @@ body {
   position: absolute; right: 10px; top: 8px;
   font-size: .75rem; font-variant-numeric: tabular-nums;
   color: var(--muted-dim);
-  background: rgba(0, 0, 0, .35);
+  background: var(--surface);
   padding: 2px 7px; border-radius: 999px;
 }
 .step.is-recording .wave-timer { color: var(--accent); }
@@ -252,23 +273,23 @@ body {
   cursor: pointer;
   transition: transform .12s var(--ease-out), filter .18s, background .2s, opacity .2s;
 }
-.btn:active:not(:disabled) { transform: translateY(2px) scale(.99); }
+.btn:active:not(:disabled) { transform: translateY(var(--lift)); box-shadow: none; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 
-.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-press); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 var(--lift) 0 var(--accent-shade); }
 .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
 
-.btn-secondary { background: var(--accent-2); color: #062630; box-shadow: var(--shadow-press); }
+.btn-secondary { background: var(--accent-2); color: var(--accent-2-ink); box-shadow: 0 var(--lift) 0 var(--accent-2-shade); }
 .btn-secondary:hover:not(:disabled) { filter: brightness(1.08); }
 
 .btn-ghost {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--surface-3);
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 2px solid var(--border);
   min-height: 46px;
   font-size: .92rem;
 }
-.btn-ghost:hover:not(:disabled) { color: var(--ink); border-color: var(--muted-dim); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--border-strong); }
 
 .btn-icon { font-size: 1.15em; line-height: 1; }
 
@@ -281,8 +302,8 @@ body {
 /* The recording button pulses so it is obvious the mic is live. */
 .btn.is-live { background: var(--accent); animation: livePulse 1.15s var(--ease-out) infinite; }
 @keyframes livePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 109, .55); }
-  60%      { box-shadow: 0 0 0 14px rgba(255, 77, 109, 0); }
+  0%, 100% { box-shadow: 0 var(--lift) 0 var(--accent-shade), 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  60%      { box-shadow: 0 var(--lift) 0 var(--accent-shade), 0 0 0 14px transparent; }
 }
 
 /* ---------------- result ---------------- */
@@ -291,8 +312,9 @@ body {
   margin-top: 20px;
   padding: 22px 18px 24px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  border: 1px solid var(--surface-3);
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  box-shadow: 0 6px 0 var(--ink);
   text-align: center;
   animation: rise .45s var(--ease-spring) both;
 }
@@ -308,7 +330,7 @@ body {
 
 .score-ring { position: relative; width: 148px; margin: 6px auto 10px; }
 .score-ring svg { width: 100%; height: auto; transform: rotate(-90deg); }
-.score-track { fill: none; stroke: var(--surface-3); stroke-width: 9; }
+.score-track { fill: none; stroke: var(--surface-2); stroke-width: 9; }
 .score-fill {
   fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round;
   stroke-dasharray: 327; stroke-dashoffset: 327;
@@ -342,7 +364,7 @@ body {
   margin-top: 8px; font-size: .76rem; color: var(--muted-dim);
 }
 .key { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.key-ghost { background: rgba(246, 244, 255, .28); }
+.key-ghost { background: var(--ghost); }
 .key-solid { background: var(--accent); margin-left: 10px; }
 
 .result-actions { display: flex; flex-direction: column; gap: 8px; }
@@ -359,23 +381,23 @@ body {
   max-width: min(92vw, 420px);
   padding: 12px 18px;
   border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
   font-size: .9rem; font-weight: 500;
-  box-shadow: var(--shadow-lift);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, .18);
   animation: toastIn .3s var(--ease-spring) both;
 }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 .sheet {
   width: min(92vw, 420px);
-  border: 1px solid var(--surface-3);
+  border: 2px solid var(--ink);
   border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--ink);
   padding: 22px;
 }
-.sheet::backdrop { background: rgba(6, 4, 14, .68); backdrop-filter: blur(3px); }
+.sheet::backdrop { background: var(--scrim); }
 .sheet h2 { margin: 0 0 12px; font-family: var(--font-display); font-size: 1.25rem; }
 .sheet p { margin: 0 0 16px; color: var(--muted); line-height: 1.55; }
 
@@ -417,7 +439,7 @@ body {
   margin-top: 12px; padding: 10px 12px;
   border-radius: var(--radius);
   background: var(--surface-2);
-  border: 1px dashed var(--surface-3);
+  border: 1px dashed var(--border);
 }
 .step[data-state='done'] .phrase-picker,
 .step[data-state='locked'] .phrase-picker { display: none; }
@@ -431,10 +453,10 @@ body {
 }
 .phrase-shuffle {
   flex: none;
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 1px solid var(--surface-3);
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--border);
   background: var(--surface);
-  color: var(--muted);
+  color: var(--ink);
   font-size: 1.05rem; line-height: 1; cursor: pointer;
   transition: transform .3s var(--ease-out), color .15s;
 }

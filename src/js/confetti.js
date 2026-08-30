@@ -6,8 +6,17 @@ const REDUCED = window.matchMedia
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : { matches: false };
 
-export function burst(canvas, { count = 130, colors = ['#ff4d6d', '#4de1ff', '#ffc94d', '#58e08b'] } = {}) {
+/** Reads the palette off the stylesheet so confetti always matches the theme. */
+function paletteColors() {
+  const style = getComputedStyle(document.documentElement);
+  return ['--accent', '--accent-2', '--warn', '--success', '--ink']
+    .map((name) => style.getPropertyValue(name).trim())
+    .filter(Boolean);
+}
+
+export function burst(canvas, { count = 130, colors } = {}) {
   if (REDUCED.matches) return;
+  colors = colors && colors.length ? colors : paletteColors();
   const ctx = canvas.getContext('2d');
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = (canvas.width = canvas.clientWidth * dpr);

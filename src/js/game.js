@@ -93,7 +93,7 @@ export class Game {
     this.compareWave.setColors({
       bar: cssVar('--accent'),
       played: cssVar('--accent'),
-      ghost: 'rgba(246,244,255,.28)',
+      ghost: cssVar('--ghost'),
     });
 
     this.el.helpBtn.addEventListener('click', () => this.el.helpSheet.showModal());

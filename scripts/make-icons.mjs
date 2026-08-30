@@ -19,8 +19,17 @@ mkdirSync(OUT, { recursive: true });
 
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium';
 
-const INK = '#f6f4ff';
-const BG = '#12101a';
+// Palette mirrors src/styles.css. Flat fills only — the gradient the icon used
+// to carry is exactly what made the app look machine-generated.
+const BG = '#16305C';        // navy ground: an icon needs to hold up on any wallpaper
+const MARK = '#D6392E';      // tomato
+const BARS = '#FFF3D2';      // butter
+const PAGE_BG = '#FFF3D2';
+const PAGE_INK = '#16305C';
+const PAGE_SURFACE = '#FFFDF7';
+const PAGE_BORDER = '#EBD79C';
+const PAGE_MUTED = '#4A5F87';
+const TEAL = '#0C8076';
 
 const fontFace = (family, file, weight) => `@font-face{font-family:'${family}';font-weight:${weight};src:url('data:font/woff2;base64,${
   readFileSync(join(ROOT, 'src/assets/fonts', file)).toString('base64')
@@ -43,31 +52,14 @@ function mark(scale = 1) {
   const heights = [0.32, 0.58, 0.82, 0.58, 0.32];
   heights.forEach((h, i) => {
     const x = 298 + i * 47;
-    bars.push(`<rect x="${x}" y="${256 - (h * 196) / 2}" width="25" height="${h * 196}" rx="12" fill="${INK}" opacity="${1 - i * 0.09}"/>`);
+    bars.push(`<rect x="${x}" y="${256 - (h * 196) / 2}" width="25" height="${h * 196}" rx="12" fill="${BARS}"/>`);
   });
   return `
 <svg viewBox="0 0 512 512" width="512" height="512" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="grad" x1="0" y1="0.1" x2="1" y2="0.9">
-      <!-- A saturated violet mid-stop. Interpolating pink straight to cyan in
-           sRGB passes through a desaturated grey, which reads as dirty at
-           launcher size. -->
-      <stop offset="0" stop-color="#ff3d63"/>
-      <stop offset="0.5" stop-color="#c14ff0"/>
-      <stop offset="1" stop-color="#35ddff"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="12%" r="78%">
-      <stop offset="0" stop-color="#3a2c58"/>
-      <stop offset="1" stop-color="${BG}"/>
-    </radialGradient>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#ff4d6d" flood-opacity="0.34"/>
-    </filter>
-  </defs>
-  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect width="512" height="512" fill="${BG}"/>
   <g transform="translate(256 256) scale(${scale}) translate(-256 -256)">
     <!-- reverse-play triangle -->
-    <path d="M266 120 L266 392 L66 262 Z" fill="url(#grad)" filter="url(#soft)" stroke-linejoin="round" stroke-width="26" stroke="url(#grad)"/>
+    <path d="M266 120 L266 392 L66 262 Z" fill="${MARK}" stroke="${MARK}" stroke-width="26" stroke-linejoin="round"/>
     ${bars.join('\n    ')}
   </g>
 </svg>`;
@@ -76,7 +68,7 @@ function mark(scale = 1) {
 const page = (body, css = '') => `<!doctype html><html><head><meta charset="utf-8"><style>
 ${FONTS}
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:${BG};color:${INK};font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+html,body{background:${PAGE_BG};color:${PAGE_INK};font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 ${css}
 </style></head><body>${body}</body></html>`;
 
@@ -142,24 +134,24 @@ const ogHtml = page(`
     </ol>
     <p class="foot">sdrawkcab.netlify.app</p>
   </div>`,
-  `.card{position:relative;width:1200px;height:630px;padding:50px 62px;display:flex;flex-direction:column;overflow:hidden}
-   .glow{position:absolute;inset:-40% -10% auto;height:120%;background:radial-gradient(60% 60% at 50% 0,#3a2c58 0,transparent 70%);pointer-events:none}
+  `.card{position:relative;width:1200px;height:630px;padding:50px 62px;display:flex;flex-direction:column;overflow:hidden;background:${PAGE_BG}}
+   .glow{display:none}
    header{display:flex;align-items:center;gap:28px;position:relative}
-   .badge{width:112px;height:112px;border-radius:28px;overflow:hidden;flex:none;box-shadow:0 18px 44px rgba(0,0,0,.5)}
+   .badge{width:112px;height:112px;border-radius:26px;overflow:hidden;flex:none;box-shadow:0 6px 0 ${PAGE_BORDER}}
    .badge svg{width:100%;height:100%;display:block}
    h1{font-family:'Archivo Black',sans-serif;font-size:76px;line-height:1;letter-spacing:-.02em;
-      background:linear-gradient(92deg,#ff4d6d 8%,#4de1ff 88%);-webkit-background-clip:text;background-clip:text;color:transparent}
-   .tag{font-size:28px;color:#a9a3c4;margin-top:10px}
+      color:${PAGE_INK};text-shadow:4px 4px 0 ${MARK}}
+   .tag{font-size:28px;color:${PAGE_MUTED};margin-top:10px}
    .steps{list-style:none;margin:38px 0 0;display:grid;gap:12px;position:relative}
-   .steps li{display:flex;align-items:center;gap:18px;font-size:27px;color:${INK};
-     background:#1c1a29;border:1px solid #322e46;border-radius:18px;padding:11px 22px}
-   .steps li span{width:38px;height:38px;border-radius:50%;background:#ff4d6d;color:#2a0410;
+   .steps li{display:flex;align-items:center;gap:18px;font-size:27px;color:${PAGE_INK};
+     background:${PAGE_SURFACE};border:2px solid ${PAGE_BORDER};border-radius:18px;padding:11px 22px}
+   .steps li span{width:38px;height:38px;border-radius:50%;background:${MARK};color:#fff;
      display:grid;place-items:center;font-weight:700;font-size:20px;flex:none}
-   .steps li.rev span{background:#4de1ff;color:#062630}
-   .wave{margin-left:auto;fill:#ff4d6d;opacity:.92;flex:none}
-   .steps li.rev .wave{fill:#4de1ff}
+   .steps li.rev span{background:${TEAL};color:#fff}
+   .wave{margin-left:auto;fill:${MARK};flex:none}
+   .steps li.rev .wave{fill:${TEAL}}
    .wave.flip{transform:scaleX(-1)}
-   .foot{margin-top:auto;padding-top:18px;font-size:24px;color:#6f6a8a;letter-spacing:.04em}`);
+   .foot{margin-top:auto;padding-top:18px;font-size:24px;color:${PAGE_MUTED};letter-spacing:.04em}`);
 
 await shoot(ogHtml, { width: 1200, height: 630, path: join(OUT, 'og.png') });
 

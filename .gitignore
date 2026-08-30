@@ -10,3 +10,6 @@ tests/_*
 *.tmp.mjs
 shot-*.png
 wave-*.png
+pal-*.png
+final-*.png
+palette-comparison.png

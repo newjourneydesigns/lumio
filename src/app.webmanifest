@@ -7,8 +7,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#12101a",
-  "theme_color": "#12101a",
+  "background_color": "#FFF3D2",
+  "theme_color": "#FFF3D2",
   "categories": ["games", "entertainment"],
   "lang": "en",
   "icons": [
