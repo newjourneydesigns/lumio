@@ -8,8 +8,6 @@ tests/fixtures/*.wav
 # They are throwaway reproduction scripts, not part of the suite.
 tests/_*
 *.tmp.mjs
-shot-*.png
-wave-*.png
-pal-*.png
-final-*.png
-palette-comparison.png
+# Preview screenshots are generated at the repo root to show work in progress.
+# Anchored to the root so the real artwork in src/assets/ stays tracked.
+/*.png
