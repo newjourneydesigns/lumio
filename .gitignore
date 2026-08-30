@@ -3,3 +3,10 @@ node_modules/
 .DS_Store
 tests/fixtures/*.wav
 *.log
+
+# Scratch files written by review/analysis agents into the test directory.
+# They are throwaway reproduction scripts, not part of the suite.
+tests/_*
+*.tmp.mjs
+shot-*.png
+wave-*.png
