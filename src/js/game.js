@@ -167,14 +167,34 @@ export class Game {
     this.shufflePhrase();
   }
 
-  shufflePhrase() {
-    const list = COPY.promptPhrases;
-    let next = this.el.phraseWord.textContent;
-    // Never show the same suggestion twice in a row — it reads as a broken button.
-    while (list.length > 1 && next === this.el.phraseWord.textContent) {
-      next = list[Math.floor(Math.random() * list.length)];
+  /**
+   * Draws from a shuffled bag rather than picking at random each time.
+   *
+   * With a few hundred phrases, independent random picks still repeat
+   * surprisingly often — and a repeat inside one sitting makes the list feel
+   * far smaller than it is, or the button feel broken. Drawing without
+   * replacement means you see every phrase once before any comes back.
+   */
+  nextPhrase() {
+    if (!this._bag || this._bag.length === 0) {
+      const list = COPY.promptPhrases.slice();
+      // Fisher-Yates.
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = list[i]; list[i] = list[j]; list[j] = t;
+      }
+      // Avoid the reshuffle handing back the phrase we are already showing.
+      const showing = this.el.phraseWord ? this.el.phraseWord.textContent : '';
+      if (list.length > 1 && list[list.length - 1] === showing) {
+        const t = list[0]; list[0] = list[list.length - 1]; list[list.length - 1] = t;
+      }
+      this._bag = list;
     }
-    this.el.phraseWord.textContent = next;
+    return this._bag.pop();
+  }
+
+  shufflePhrase() {
+    this.el.phraseWord.textContent = this.nextPhrase();
   }
 
   /* ---------------- step state ---------------- */

@@ -73,6 +73,48 @@ try {
   check('step 2 starts locked', (await stepState(2)) === 'locked');
   check('a phrase is suggested', (await page.locator('#phrase-word').textContent()).trim().length > 0);
 
+  // The picker has to survive the longest phrase the list permits, on the
+  // narrowest phone still in use — a long suggestion used to wrap around the
+  // shuffle button and push it past the card's edge.
+  const picker = await page.evaluate(() => {
+    const el = document.getElementById('phrase-word');
+    const was = el.textContent;
+    el.textContent = 'unreasonable bees';
+    const p = el.closest('.phrase-picker').getBoundingClientRect();
+    const b = el.closest('.phrase-picker').querySelector('.phrase-shuffle').getBoundingClientRect();
+    const w = el.getBoundingClientRect();
+    const r = {
+      inside: b.right <= p.right + 0.5 && b.left >= p.left,
+      size: Math.round(b.width),
+      clears: w.right <= b.left + 0.5,
+    };
+    el.textContent = was;
+    return r;
+  });
+  check('the phrase picker holds a long suggestion',
+    picker.inside && picker.clears, JSON.stringify(picker));
+  check('the shuffle button meets the 44px touch target', picker.size >= 44, `${picker.size}px`);
+
+  // Drawing without replacement: a repeat inside one sitting makes a list of
+  // hundreds feel tiny.
+  const draws = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const { COPY } = await import('./js/copy.js');
+    const size = COPY.promptPhrases.length;
+    // Start from a fresh bag: the picker already drew one at startup, so the
+    // live bag is one short of a full cycle.
+    g._bag = null;
+    const seen = [];
+    // Exactly one bag: every phrase should appear once before any repeats.
+    for (let i = 0; i < size; i++) seen.push(g.nextPhrase());
+    let immediate = 0;
+    for (let i = 1; i < seen.length; i++) if (seen[i] === seen[i - 1]) immediate++;
+    return { size, unique: new Set(seen).size, immediate };
+  });
+  check('one full pass shows every phrase exactly once',
+    draws.unique === draws.size, `${draws.unique}/${draws.size} unique`);
+  check('a phrase never follows itself', draws.immediate === 0);
+
   // Double-tapping the big button is normal play, and iOS reads it as
   // double-tap-to-zoom unless touch-action says otherwise.
   const touch = await page.evaluate(() => {

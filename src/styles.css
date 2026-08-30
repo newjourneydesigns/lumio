@@ -439,24 +439,38 @@ body {
 /* ---------------- phrase suggestion ---------------- */
 
 .phrase-picker {
-  display: flex; align-items: center; gap: 8px;
+  /* Grid rather than a single flex row: the label alone eats a third of a
+     320px screen, and a long suggestion used to wrap around the shuffle button
+     and shove it past the card's edge. Label on its own line, phrase and
+     button side by side, and it holds at any width. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label label'
+    'word  shuffle';
+  align-items: center;
+  gap: 2px 10px;
   margin-top: 12px; padding: 10px 12px;
   border-radius: var(--radius);
   background: var(--surface-2);
-  border: 1px dashed var(--border);
+  border: 2px dashed var(--border);
 }
 .step[data-state='done'] .phrase-picker,
 .step[data-state='locked'] .phrase-picker { display: none; }
 
 .phrase-label {
-  font-size: .74rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--muted-dim); flex: none;
+  grid-area: label;
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--muted);
 }
 .phrase-word {
-  flex: 1; font-size: 1rem; color: var(--ink);
+  grid-area: word;
+  min-width: 0;
+  font-size: 1.15rem; color: var(--ink);
+  overflow-wrap: anywhere;
 }
 .phrase-shuffle {
-  flex: none;
+  grid-area: shuffle;
   width: 44px; height: 44px; border-radius: 50%;
   border: 2px solid var(--border);
   background: var(--surface);

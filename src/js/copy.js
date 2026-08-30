@@ -11,6 +11,8 @@
  * answer. The labels have to say so.
  */
 
+import { PROMPT_PHRASES } from './phrases.js';
+
 export const COPY = {
   appName: 'Sdrawkcab',
   tagline: 'Say a thing. Hear it backwards. Say THAT. Hear it backwards again.',
@@ -60,14 +62,7 @@ export const COPY = {
     { minScore: 96, title: 'Unholy Mouth', quip: 'That should not be possible with a human tongue.' },
   ],
 
-  // Short, silly, and phonetically chunky — long phrases are impossible to
-  // reproduce backwards and kill the round.
-  promptPhrases: [
-    'banana phone', 'wet socks', 'moon cheese', 'tiny horse', 'lava lamp',
-    'goose lawyer', 'haunted toaster', 'space taco', 'big worm', 'toe beans',
-    'gravy boat', 'cheese wizard', 'wobbly noodle', 'pickle jar', 'hot dog',
-    'swamp radio', 'angry muffin', 'velvet elbow',
-  ],
+  promptPhrases: PROMPT_PHRASES,
 
   microcopy: {
     phraseLabel: 'Try saying',
