@@ -434,6 +434,42 @@ try {
   });
   check('a 404 does not poison the cached app shell', shell.same && shell.isGame);
 
+  // ---- "Same phrase, try again" redoes only the attempt
+  const beforeRetry = await page.evaluate(() => ({
+    phrase: document.getElementById('phrase-word').textContent,
+    originalDur: window.__sdrawkcab.takes.original.duration,
+  }));
+  await page.locator('#retry-btn').click();
+  const afterRetry = await page.evaluate(() => ({
+    step: window.__sdrawkcab.step,
+    phrase: document.getElementById('phrase-word').textContent,
+    originalKept: window.__sdrawkcab.takes.original?.duration || null,
+    reversedKept: !!window.__sdrawkcab.reversed.original,
+    mimicCleared: !window.__sdrawkcab.takes.mimic,
+    resultHidden: document.getElementById('result').hidden,
+  }));
+  check('retry returns to the attempt step only', afterRetry.step === 3 && afterRetry.mimicCleared,
+    `step ${afterRetry.step}`);
+  check('retry keeps the original take and its gibberish',
+    afterRetry.originalKept === beforeRetry.originalDur && afterRetry.reversedKept);
+  check('retry keeps the same phrase', afterRetry.phrase === beforeRetry.phrase);
+  check('retry hides the old result', afterRetry.resultHidden);
+
+  // Rebuild the round so the reset checks below still exercise a full result.
+  await record(3, 1600);
+  await playThrough(4);
+  await page.waitForSelector('#result:not([hidden])', { timeout: 8000 });
+
+  // The two step-level redo buttons must say different things — they do
+  // different things (one wipes the round, one only your attempt).
+  const redoLabels = await page.evaluate(() => ({
+    step1: document.querySelector('.step[data-step="1"] .step-extras .btn')?.textContent || '',
+    step3: document.querySelector('.step[data-step="3"] .step-extras .btn')?.textContent || '',
+  }));
+  check('step redo buttons are distinct and specific',
+    redoLabels.step1 !== redoLabels.step3 && redoLabels.step1.length > 0,
+    `"${redoLabels.step1}" vs "${redoLabels.step3}"`);
+
   // ---- go again resets cleanly
   await page.locator('#again-btn').click();
   check('reset returns to step 1', (await stepState(1)) === 'active');

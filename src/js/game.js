@@ -66,6 +66,7 @@ export class Game {
       resultQuip: $('result-quip'),
       compareWave: $('compare-wave'),
       againBtn: $('again-btn'),
+      retryBtn: $('retry-btn'),
       shareBtn: $('share-btn'),
       streak: $('streak'),
       toast: $('toast'),
@@ -85,6 +86,7 @@ export class Game {
 
     this.el.tagline.textContent = COPY.tagline;
     this.el.againBtn.textContent = COPY.microcopy.goAgain;
+    this.el.retryBtn.textContent = COPY.microcopy.sameAgain;
     this.el.shareBtn.textContent = COPY.microcopy.shareButton;
     this.el.howList.innerHTML = '';
     for (const line of COPY.microcopy.howToPlay) {
@@ -122,6 +124,13 @@ export class Game {
     this.el.helpClose.addEventListener('click', () => this.el.helpSheet.close());
     this.el.blockerClose.addEventListener('click', () => this.el.blockerSheet.close());
     this.el.againBtn.addEventListener('click', () => this.reset());
+    // The thing everyone actually wants after a rough score: another go at the
+    // same phrase. redoFrom(3) keeps the original take, so the gibberish to
+    // re-listen to is still one tap away on step 2.
+    this.el.retryBtn.addEventListener('click', () => {
+      if (this.busy) return;
+      this.redoFrom(3);
+    });
     this.el.shareBtn.addEventListener('click', () => this.share());
 
     // A take is a lie if the tab was backgrounded, so the engine drops it — we
@@ -266,13 +275,13 @@ export class Game {
       };
 
       if (i === 1 && this.takes.original) {
-        add(COPY.microcopy.redo, () => this.redoFrom(1));
+        add(COPY.microcopy.redoPhrase, () => this.redoFrom(1));
       }
       if (i === 2 && this.reversed.original) {
         add(COPY.microcopy.slower, () => this.playBuffer(2, this.reversed.original, { rate: SLOW_RATE }));
       }
       if (i === 3 && this.takes.mimic) {
-        add(COPY.microcopy.redo, () => this.redoFrom(3));
+        add(COPY.microcopy.redoMimic, () => this.redoFrom(3));
       }
       if (i === 4 && this.reversed.mimic) {
         add(COPY.microcopy.playForward, () => this.playBuffer(4, this.takes.mimic.buffer));
@@ -651,6 +660,7 @@ export class Game {
     // These were left enabled while audio played, so "Go again" would scroll
     // and reshuffle the phrase but quietly decline to reset anything.
     this.el.againBtn.disabled = value;
+    this.el.retryBtn.disabled = value;
     this.el.shareBtn.disabled = value;
   }
 

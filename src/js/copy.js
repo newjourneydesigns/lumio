@@ -70,8 +70,13 @@ export const COPY = {
     playing: 'Playing…',
     playForward: 'Hear it forwards',
     slower: 'Play it slower',
-    redo: 'Redo this bit',
-    goAgain: 'Go again',
+    // Every retry names exactly what it redoes. A generic "redo this bit" sat
+    // on two different steps doing two different things — one wiped the whole
+    // round, the other only your attempt — and nothing said which.
+    redoPhrase: 'Re-record my phrase',
+    redoMimic: 'Redo my attempt',
+    goAgain: 'New round, new phrase',
+    sameAgain: 'Same phrase, try again',
     shareButton: 'Share with your friends',
     shareText: 'I scored {score} trying to talk backwards. Beat that.',
     downloaded: 'Saved. Send it to someone.',
