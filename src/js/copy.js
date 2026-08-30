@@ -92,6 +92,7 @@ export const COPY = {
       'too-short': 'That was over before it started. Hold on a moment longer.',
       silent: "We couldn't hear anything. Get a bit closer to the mic.",
       busy: 'Something else is using the microphone. Close it and try again.',
+      session: 'The audio got tangled up. Reload the page and it should behave.',
       interrupted: 'Something interrupted that take. Give it another go.',
       aborted: 'That take got cut off. Try again.',
       unknown: 'The microphone had a moment. Try that again.',

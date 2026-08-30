@@ -179,6 +179,32 @@ try {
   await page.evaluate(() => window.__sdrawkcab.redoFrom(1));
   await page.waitForTimeout(200);
 
+  // iOS rejects getUserMedia outright if the page is in an output-only audio
+  // session. unlock() deliberately puts us in 'playback' so the silent switch
+  // cannot mute the game, so the record category MUST be claimed before the
+  // microphone is requested, not after. navigator.audioSession does not exist
+  // in Chromium, so stand one in and record what it held at the call.
+  const session = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    g.engine.releaseMic();
+    const seen = [];
+    let current = 'auto';
+    Object.defineProperty(navigator, 'audioSession', {
+      configurable: true,
+      value: { get type() { return current; }, set type(v) { current = v; seen.push('set:' + v); } },
+    });
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let atCall = null;
+    navigator.mediaDevices.getUserMedia = (c) => { atCall = current; return real(c); };
+    await g.engine.acquireMic();
+    g.engine.releaseMic();
+    navigator.mediaDevices.getUserMedia = real;
+    delete navigator.audioSession;
+    return { atCall, seen };
+  });
+  check('the record audio session is claimed BEFORE the mic is requested',
+    session.atCall === 'play-and-record', `session was "${session.atCall}" at getUserMedia`);
+
   // Granting microphone permission on iOS hides the page, which fires
   // visibilitychange. A take that is still ACQUIRING the mic must survive
   // that — otherwise the first recording of every session is cancelled by the

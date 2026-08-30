@@ -48,6 +48,8 @@ function classifyMicError(err) {
       return new AudioError('insecure', 'Microphone access needs a secure (https) connection.');
     case 'AbortError':
       return new AudioError('aborted', 'The microphone was interrupted.');
+    case 'InvalidStateError':
+      return new AudioError('session', 'The audio session would not allow recording.', err);
     default:
       return new AudioError('unknown', (err && err.message) || 'The microphone failed.', err);
   }
@@ -269,6 +271,13 @@ export class AudioEngine {
       },
     };
 
+    // BEFORE asking for the microphone, not after. unlock() puts the page in a
+    // 'playback' audio session so the iOS silent switch cannot mute the game —
+    // but 'playback' is an output-only category, and asking for capture while
+    // in it makes iOS reject getUserMedia outright with
+    // "InvalidStateError: AudioSession category is not compatible".
+    this.setAudioSession('play-and-record');
+
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(ideal);
@@ -279,12 +288,20 @@ export class AudioEngine {
         } catch (retryErr) {
           throw classifyMicError(retryErr);
         }
+      } else if (err && err.name === 'InvalidStateError') {
+        // The category did not take, or something else moved it underneath us.
+        // 'auto' lets the platform pick, which is the safer second attempt.
+        this.setAudioSession('auto');
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(ideal);
+        } catch (retryErr) {
+          throw classifyMicError(retryErr);
+        }
       } else {
         throw classifyMicError(err);
       }
     }
 
-    this.setAudioSession('play-and-record');
     this.stream = stream;
     const track = stream.getAudioTracks()[0];
     if (track) {
