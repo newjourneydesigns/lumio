@@ -31,6 +31,28 @@
 
 * { box-sizing: border-box; }
 
+/* Controls and the cards around them must never behave like text: no selection
+   highlight, no long-press callout, no double-tap zoom. Prose inside the help
+   dialog is exempt below, so it stays selectable. */
+button,
+.step,
+.wave-box,
+.phrase-picker,
+.score-ring,
+.confetti {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.sheet p,
+.sheet h2,
+.how-list {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -47,6 +69,19 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            calc(env(safe-area-inset-bottom) + 24px) env(safe-area-inset-left);
   overflow-x: hidden;
+
+  /* This is a tapping game: you hit the same big button twice in quick
+     succession all the time, and iOS reads that as double-tap-to-zoom, which
+     throws the layout around mid-round. `manipulation` removes double-tap zoom
+     (and the legacy 300ms click delay) while deliberately LEAVING pinch-zoom
+     alone — killing zoom outright with user-scalable=no would lock out anyone
+     who needs to magnify the screen. */
+  touch-action: manipulation;
+
+  /* Stop the page rubber-banding away from under a thumb mid-recording. */
+  overscroll-behavior-y: none;
+
+  -webkit-tap-highlight-color: transparent;
 }
 
 .sr-only {
@@ -76,7 +111,9 @@ body {
   font-family: var(--font-display);
   font-size: clamp(1.35rem, 6vw, 1.7rem);
   letter-spacing: -.02em;
-  background: linear-gradient(92deg, var(--accent) 10%, var(--accent-2) 90%);
+  /* Same saturated violet mid-stop as the app icon: pink straight to cyan
+     passes through a washed-out grey in the middle of the word. */
+  background: linear-gradient(92deg, #ff3d63 6%, #c14ff0 50%, #35ddff 94%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -182,7 +219,12 @@ body {
   border: 1px solid var(--surface-2);
   overflow: hidden;
 }
-.wave-box canvas { display: block; width: 100%; height: 100%; }
+.wave-box canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* the canvas is a picture, not a control */
+}
 
 .step[data-state='locked'] .wave-box { display: none; }
 

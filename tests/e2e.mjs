@@ -49,12 +49,16 @@ try {
   // missing asset of our own is a real bug.
   const errors = [];
   const badRequests = [];
+  // Requests are only expected to succeed while the network is up; the offline
+  // section below deliberately fails everything the service worker has not
+  // precached, which is not a bug.
+  let expectNetwork = true;
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('requestfailed', (r) => {
-    if (new URL(r.url()).host.startsWith('localhost')) badRequests.push(r.url());
+    if (expectNetwork && new URL(r.url()).host.startsWith('localhost')) badRequests.push(r.url());
   });
   page.on('response', (r) => {
-    if (r.status() >= 400 && new URL(r.url()).host.startsWith('localhost')) {
+    if (expectNetwork && r.status() >= 400 && new URL(r.url()).host.startsWith('localhost')) {
       badRequests.push(`${r.status()} ${r.url()}`);
     }
   });
@@ -68,6 +72,26 @@ try {
   check('step 1 starts active', (await stepState(1)) === 'active');
   check('step 2 starts locked', (await stepState(2)) === 'locked');
   check('a phrase is suggested', (await page.locator('#phrase-word').textContent()).trim().length > 0);
+
+  // Double-tapping the big button is normal play, and iOS reads it as
+  // double-tap-to-zoom unless touch-action says otherwise.
+  const touch = await page.evaluate(() => {
+    const btn = document.querySelector('.step-primary');
+    const meta = document.querySelector('meta[name="viewport"]').content;
+    return {
+      body: getComputedStyle(document.body).touchAction,
+      button: getComputedStyle(btn).touchAction,
+      buttonSelect: getComputedStyle(btn).webkitUserSelect || getComputedStyle(btn).userSelect,
+      overscroll: getComputedStyle(document.body).overscrollBehaviorY,
+      // Pinch-zoom must survive: disabling it locks out anyone who needs to magnify.
+      blocksPinch: /user-scalable\s*=\s*no|maximum-scale/.test(meta),
+    };
+  });
+  check('double-tap zoom is disabled on the page', touch.body === 'manipulation', touch.body);
+  check('double-tap zoom is disabled on buttons', touch.button === 'manipulation', touch.button);
+  check('buttons do not select text on long press', touch.buttonSelect === 'none', touch.buttonSelect);
+  check('the page does not rubber-band', touch.overscroll === 'none', touch.overscroll);
+  check('pinch-zoom is still allowed', touch.blocksPinch === false);
 
   // Buttons must not repeat the original app's two identical PLAY BACKWARDS.
   const labels = await page.locator('.step-primary').allTextContents();
@@ -175,6 +199,84 @@ try {
   check('reset returns to step 1', (await stepState(1)) === 'active');
   check('reset clears the takes', await page.evaluate(() => !window.__sdrawkcab.takes.original));
   check('reset hides the result', await page.locator('#result').isHidden());
+
+  // ---- installable as an app, and shareable
+  const manifest = await page.evaluate(async () => {
+    const href = document.querySelector('link[rel=manifest]').href;
+    const m = await (await fetch(href)).json();
+    const abs = (u) => new URL(u, href).href;
+    const head = (u) => fetch(abs(u)).then((r) => ({ ok: r.ok, type: r.headers.get('content-type') }));
+    const icons = await Promise.all(m.icons.map((i) => head(i.src).then((r) => ({ ...r, src: i.src, purpose: i.purpose }))));
+    const apple = document.querySelector('link[rel="apple-touch-icon"]');
+    const appleOk = apple ? (await fetch(apple.href)).ok : false;
+    const og = document.querySelector('meta[property="og:image"]');
+    return {
+      name: m.name,
+      display: m.display,
+      hasStart: !!m.start_url,
+      themeMatches: m.theme_color === document.querySelector('meta[name=theme-color]').content,
+      icons,
+      hasMaskable: m.icons.some((i) => (i.purpose || '').includes('maskable')),
+      has192: m.icons.some((i) => i.sizes === '192x192'),
+      has512: m.icons.some((i) => i.sizes === '512x512'),
+      appleOk,
+      ogAbsolute: !!og && og.content.startsWith('http'),
+      ogW: document.querySelector('meta[property="og:image:width"]').content,
+      ogH: document.querySelector('meta[property="og:image:height"]').content,
+      twitterCard: document.querySelector('meta[name="twitter:card"]').content,
+    };
+  });
+  check('manifest declares a standalone app', manifest.display === 'standalone' && manifest.hasStart);
+  check('manifest theme matches the page theme', manifest.themeMatches);
+  check('manifest has 192 and 512 icons', manifest.has192 && manifest.has512);
+  check('manifest has a maskable icon', manifest.hasMaskable);
+  check('every manifest icon actually loads', manifest.icons.every((i) => i.ok),
+    manifest.icons.filter((i) => !i.ok).map((i) => i.src).join(' '));
+  check('apple-touch-icon loads', manifest.appleOk);
+  check('og:image is an absolute url', manifest.ogAbsolute);
+  check('og:image is declared 1200x630', manifest.ogW === '1200' && manifest.ogH === '630');
+  check('twitter card is summary_large_image', manifest.twitterCard === 'summary_large_image');
+
+  // The share card must be the size it claims, or it crops badly in a chat.
+  const ogReal = await page.evaluate(() => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve({ w: 0, h: 0 });
+    img.src = './assets/og.png';
+  }));
+  check('the share card really is 1200x630', ogReal.w === 1200 && ogReal.h === 630,
+    `${ogReal.w}x${ogReal.h}`);
+
+  // ---- offline: an installed game must survive a dead signal
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  check('service worker takes control', await page.evaluate(() => !!navigator.serviceWorker.controller));
+
+  // Everything needed to play a round must be in the cache before we cut the
+  // network, or "works offline" is luck rather than design.
+  const cached = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const cache = await caches.open(names[0]);
+    const keys = await cache.keys();
+    return keys.map((r) => new URL(r.url).pathname);
+  });
+  const mustHave = ['/index.html', '/styles.css', '/fonts.css', '/js/main.js', '/js/game.js',
+    '/js/audio.js', '/js/dsp.js', '/js/viz.js', '/js/copy.js', '/audio/take-capture.worklet.js',
+    '/assets/fonts/space-grotesk-latin.woff2'];
+  const missing = mustHave.filter((m) => !cached.includes(m));
+  check('the whole playable shell is precached', missing.length === 0, missing.join(' '));
+
+  expectNetwork = false;
+  await context.setOffline(true);
+  await page.reload({ waitUntil: 'load' });
+  const offline = await page.evaluate(() => ({
+    steps: document.querySelectorAll('.step').length,
+    label: document.querySelector('.step-primary')?.textContent || '',
+    font: !!document.fonts,
+  }));
+  check('the game still loads with no network', offline.steps === 4 && offline.label.length > 0,
+    `${offline.steps} steps, "${offline.label}"`);
+  await context.setOffline(false);
+  expectNetwork = true;
 
   check('no uncaught page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   check('every local asset loads', badRequests.length === 0, badRequests.slice(0, 3).join(' | '));
