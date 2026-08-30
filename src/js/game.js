@@ -639,12 +639,24 @@ export class Game {
   handleError(err) {
     this.sfx.error();
     const code = err instanceof AudioError ? err.code : 'unknown';
+    // Keep the real error reachable. An "unknown" toast is by definition one we
+    // failed to classify, and without this there is nothing to go on from a
+    // phone, where there is no console to open.
+    this.lastError = err;
+    if (code === 'unknown') console.error('[sdrawkcab] unclassified error', err);
     if (code === 'cancelled') return;
     if (code === 'denied' || code === 'insecure' || code === 'unsupported' || code === 'no-mic') {
       this.showBlocker(code);
       return;
     }
-    this.toast(COPY.microcopy.errors[code] || COPY.microcopy.errors.unknown);
+    let message = COPY.microcopy.errors[code];
+    if (!message) {
+      // Name the underlying fault so a player can report something actionable
+      // instead of "it said the microphone had a moment".
+      const detail = err && (err.name || err.message);
+      message = COPY.microcopy.errors.unknown + (detail ? ` (${String(detail).slice(0, 40)})` : '');
+    }
+    this.toast(message);
   }
 
   showBlocker(code) {

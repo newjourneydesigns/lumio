@@ -447,6 +447,33 @@ try {
   const missing = mustHave.filter((m) => !cached.includes(m));
   check('the whole playable shell is precached', missing.length === 0, missing.join(' '));
 
+  // A stale module in the cache must never be served while the network is up.
+  // This is the failure that broke a real phone: modules revalidated
+  // independently, so after a deploy the app could run new markup against old
+  // JavaScript and throw a bare TypeError from a changed contract.
+  const stale = await page.evaluate(async () => {
+    const cache = await caches.open((await caches.keys())[0]);
+    const url = new URL('./js/copy.js', location.href).href;
+    await cache.put(url, new Response('export const COPY = "POISONED";', {
+      headers: { 'content-type': 'text/javascript' },
+    }));
+    const served = await fetch('./js/copy.js').then((r) => r.text());
+    // The cache write is deferred behind waitUntil, so poll rather than
+    // assuming it has landed by the time the response resolves.
+    let cachedNow = '';
+    for (let i = 0; i < 40; i++) {
+      cachedNow = await cache.match(url).then((r) => (r ? r.text() : ''));
+      if (!cachedNow.includes('POISONED')) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return {
+      servedPoison: served.includes('POISONED'),
+      cacheRefreshed: !cachedNow.includes('POISONED'),
+    };
+  });
+  check('a stale module is not served while online', !stale.servedPoison);
+  check('the network response replaces the stale cache entry', stale.cacheRefreshed);
+
   expectNetwork = false;
   await context.setOffline(true);
   await page.reload({ waitUntil: 'load' });

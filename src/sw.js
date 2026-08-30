@@ -5,7 +5,14 @@
  *
  * Bump CACHE when the shell changes. Old caches are deleted on activate.
  */
-const CACHE = 'sdrawkcab-v1';
+// Bumped whenever the caching strategy changes. Every other cache is deleted
+// on activate, which is also how a client carrying a poisoned or mixed-version
+// cache from an earlier worker gets rescued.
+const CACHE = 'sdrawkcab-v2';
+
+// Fonts and images are content-stable: if one ever changes it changes name.
+// Everything else is code, and code must never be served stale.
+const IMMUTABLE = /\/assets\/(fonts|[^/]+\.(png|svg))/;
 
 const SHELL = [
   './',
@@ -81,19 +88,37 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else: serve from cache immediately, refresh in the background.
+  // Immutable assets: cache first, because they never change in place.
+  if (IMMUTABLE.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
+        }
+        return response;
+      })),
+    );
+    return;
+  }
+
+  // Code and markup: network first, cache only as the offline fallback.
+  //
+  // This used to be stale-while-revalidate, which is wrong for an app whose
+  // modules import each other. Each file revalidates independently, so after a
+  // deploy a returning phone could run some modules from the new version and
+  // some from the old — and a cross-module contract that changed in between
+  // then throws a bare TypeError with no useful message. The app is about 60KB
+  // of JS and CSS; there is nothing to gain by serving any of it stale.
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    }),
+    fetch(request)
+      .then((response) => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request)),
   );
 });
