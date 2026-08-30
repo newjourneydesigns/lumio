@@ -91,6 +91,12 @@
 <dialog class="sheet" id="help-sheet">
   <h2>How to play</h2>
   <ol class="how-list" id="how-list"></ol>
+  <section class="diagnostics" id="diagnostics" hidden>
+    <h3>Something went wrong?</h3>
+    <p>Send this to whoever built it and they will know what broke.</p>
+    <textarea id="diagnostics-text" readonly rows="6" aria-label="Diagnostic details"></textarea>
+    <button type="button" class="btn btn-ghost" id="copy-diagnostics">Copy details</button>
+  </section>
   <button type="button" class="btn btn-primary" id="help-close">Got it</button>
 </dialog>
 

@@ -20,10 +20,15 @@ const SILENCE_PEAK = 0.008; // below this the take is "we didn't hear anything"
 
 /** Thrown for problems we have something friendly to say about. */
 export class AudioError extends Error {
-  constructor(code, message) {
+  constructor(code, message, cause) {
     super(message);
     this.name = 'AudioError';
     this.code = code;
+    // The original failure, kept verbatim. Without it an unrecognised error
+    // collapses into a generic "something went wrong" and there is nothing
+    // left to diagnose from.
+    this.cause = cause || null;
+    this.detail = cause ? `${cause.name || 'Error'}: ${cause.message || cause}` : '';
   }
 }
 
@@ -44,7 +49,7 @@ function classifyMicError(err) {
     case 'AbortError':
       return new AudioError('aborted', 'The microphone was interrupted.');
     default:
-      return new AudioError('unknown', (err && err.message) || 'The microphone failed.');
+      return new AudioError('unknown', (err && err.message) || 'The microphone failed.', err);
   }
 }
 
@@ -444,7 +449,9 @@ export class AudioEngine {
       await this.acquireMic();
     } catch (err) {
       if (this._recording === rec) this._recording = null;
-      throw err;
+      throw err instanceof AudioError
+        ? err
+        : new AudioError('unknown', 'Could not start recording.', err);
     }
     if (this._recording !== rec) return done; // aborted while acquiring
 
@@ -514,6 +521,20 @@ export class AudioEngine {
     }
     rec.reject(new AudioError(reason === 'released' ? 'cancelled' : 'interrupted',
       'Something interrupted that take.'));
+  }
+
+  /** Everything worth knowing when a player reports that it did not work. */
+  diagnostics() {
+    const track = this.stream && this.stream.getAudioTracks()[0];
+    return {
+      context: this.ctx ? this.ctx.state : 'none',
+      sampleRate: this.ctx ? this.ctx.sampleRate : 0,
+      capture: this.worklet ? 'worklet' : this.processor ? 'scriptprocessor' : 'none',
+      audioSession: (navigator.audioSession && navigator.audioSession.type) || 'unsupported',
+      track: track ? `${track.readyState}${track.muted ? ' muted' : ''}` : 'none',
+      settings: track && track.getSettings ? track.getSettings() : null,
+      secure: window.isSecureContext,
+    };
   }
 
   get isRecording() {
@@ -606,9 +627,20 @@ export class AudioEngine {
 
   _bindLifecycle() {
     const drop = () => {
-      this._abortRecording('interrupted');
+      // A take that is still ACQUIRING the microphone must survive this. On
+      // iOS the permission prompt itself hides the page, so the very first
+      // recording of every session would otherwise be cancelled by the act of
+      // granting permission — and releaseMic() would abort it too.
+      //
+      // Keyed off this._recording, which record() assigns synchronously before
+      // its first await. An earlier attempt tested this._micPromise instead and
+      // was subtly wrong: that is assigned one turn later, so an event arriving
+      // in between still tore the take down.
+      const rec = this._recording;
+      const acquiring = !!rec && !rec.armed;
+      if (rec && rec.armed) this._abortRecording('interrupted');
       this.stopPlayback();
-      this.releaseMic();
+      if (!acquiring) this.releaseMic();
     };
     document.addEventListener('visibilitychange', () => {
       // A backgrounded tab suspends the context; samples collected there are a lie.

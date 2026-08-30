@@ -75,6 +75,7 @@ export const COPY = {
     shareButton: 'Share with your friends',
     shareText: 'I scored {score} trying to talk backwards. Beat that.',
     downloaded: 'Saved. Send it to someone.',
+    copied: 'Copied',
     resultKicker: 'The verdict',
     streak: 'Best {best} · {rounds} round{s} played',
     tooQuiet: "We couldn't hear that one. Try again, louder.",

@@ -480,3 +480,26 @@ body {
 }
 .phrase-shuffle:hover { color: var(--ink); }
 .phrase-shuffle:active { transform: rotate(180deg); }
+
+/* ---------------- diagnostics ---------------- */
+
+.diagnostics {
+  margin: 4px 0 18px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+}
+.diagnostics h3 { margin: 0 0 6px; font-size: .98rem; }
+.diagnostics p { margin: 0 0 10px; font-size: .85rem; }
+.diagnostics textarea {
+  width: 100%;
+  font: .74rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  resize: vertical;
+}
+.diagnostics .btn { margin-top: 10px; }

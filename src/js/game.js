@@ -78,6 +78,9 @@ export class Game {
       blockerTitle: $('blocker-title'),
       blockerBody: $('blocker-body'),
       blockerClose: $('blocker-close'),
+      diagnostics: $('diagnostics'),
+      diagnosticsText: $('diagnostics-text'),
+      copyDiagnostics: $('copy-diagnostics'),
     };
 
     this.el.tagline.textContent = COPY.tagline;
@@ -98,7 +101,24 @@ export class Game {
       ghost: cssVar('--ghost'),
     });
 
-    this.el.helpBtn.addEventListener('click', () => this.el.helpSheet.showModal());
+    this.el.helpBtn.addEventListener('click', () => {
+      // Only shown once something has actually gone wrong — no point offering
+      // a bug report to someone whose game is working.
+      this.el.diagnostics.hidden = !this.lastError;
+      this.el.diagnosticsText.value = this.lastError ? this.diagnosticsText() : '';
+      this.el.helpSheet.showModal();
+    });
+    this.el.copyDiagnostics.addEventListener('click', async () => {
+      const text = this.diagnosticsText();
+      try {
+        await navigator.clipboard.writeText(text);
+        this.el.copyDiagnostics.textContent = COPY.microcopy.copied;
+      } catch {
+        // Clipboard access is refused in plenty of contexts; selecting the
+        // text is a fine fallback and needs no permission.
+        this.el.diagnosticsText.select();
+      }
+    });
     this.el.helpClose.addEventListener('click', () => this.el.helpSheet.close());
     this.el.blockerClose.addEventListener('click', () => this.el.blockerSheet.close());
     this.el.againBtn.addEventListener('click', () => this.reset());
@@ -642,21 +662,55 @@ export class Game {
     // Keep the real error reachable. An "unknown" toast is by definition one we
     // failed to classify, and without this there is nothing to go on from a
     // phone, where there is no console to open.
-    this.lastError = err;
-    if (code === 'unknown') console.error('[sdrawkcab] unclassified error', err);
+    this.lastError = {
+      code,
+      detail: (err && err.detail)
+        || (err && err.name && err.message && `${err.name}: ${err.message}`)
+        || (err && err.message)
+        || String(err),
+      at: this.engine.diagnostics(),
+    };
+    if (code === 'unknown') console.error('[sdrawkcab] unclassified error', err, this.lastError.at);
     if (code === 'cancelled') return;
     if (code === 'denied' || code === 'insecure' || code === 'unsupported' || code === 'no-mic') {
       this.showBlocker(code);
       return;
     }
-    let message = COPY.microcopy.errors[code];
-    if (!message) {
-      // Name the underlying fault so a player can report something actionable
-      // instead of "it said the microphone had a moment".
-      const detail = err && (err.name || err.message);
-      message = COPY.microcopy.errors.unknown + (detail ? ` (${String(detail).slice(0, 40)})` : '');
+    let message = COPY.microcopy.errors[code] || COPY.microcopy.errors.unknown;
+
+    // An unclassified failure is by definition one the friendly line cannot
+    // describe, so it always carries the real fault — name and message both,
+    // since "NotReadableError" alone says far less than what came with it.
+    // (The errors map has its own 'unknown' entry, so this cannot be a fallback
+    // for a missing message: it has to be an explicit check on the code.)
+    if (code === 'unknown' && this.lastError.detail) {
+      message += ` (${String(this.lastError.detail).slice(0, 60)})`;
     }
     this.toast(message);
+  }
+
+  /**
+   * A copyable snapshot, offered in the help sheet once something has failed.
+   * A phone has no console to open, so without this a bug report is limited to
+   * "it didn't work" — which is exactly where this session ended up.
+   */
+  diagnosticsText() {
+    const d = this.engine.diagnostics();
+    const lines = [
+      'sdrawkcab diagnostics',
+      `ua: ${navigator.userAgent}`,
+      `context: ${d.context} @ ${d.sampleRate}Hz`,
+      `capture: ${d.capture}`,
+      `audioSession: ${d.audioSession}`,
+      `track: ${d.track}`,
+      `secure: ${d.secure}`,
+      `settings: ${JSON.stringify(d.settings)}`,
+    ];
+    if (this.lastError) {
+      lines.push(`lastError: ${this.lastError.code} - ${this.lastError.detail}`);
+      lines.push(`atFailure: ${JSON.stringify(this.lastError.at)}`);
+    }
+    return lines.join('\n');
   }
 
   showBlocker(code) {

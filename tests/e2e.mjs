@@ -179,6 +179,40 @@ try {
   await page.evaluate(() => window.__sdrawkcab.redoFrom(1));
   await page.waitForTimeout(200);
 
+  // Granting microphone permission on iOS hides the page, which fires
+  // visibilitychange. A take that is still ACQUIRING the mic must survive
+  // that — otherwise the first recording of every session is cancelled by the
+  // act of allowing it.
+  const survives = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    // Stand in for the permission prompt: a slow grant, with the page hidden
+    // for the duration exactly as iOS does it.
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await new Promise((r) => setTimeout(r, 250));
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      return real(c);
+    };
+    let error = null;
+    let started = false;
+    try {
+      const p = g.engine.record({ maxSeconds: 5, onStart: () => { started = true; } });
+      await new Promise((r) => setTimeout(r, 900));
+      g.engine.stopRecording();
+      await p;
+    } catch (err) {
+      error = err.code || String(err);
+    }
+    navigator.mediaDevices.getUserMedia = real;
+    g.engine.releaseMic();
+    return { error, started };
+  });
+  check('a take survives the page hiding while permission is granted',
+    survives.error === null && survives.started, JSON.stringify(survives));
+
   // ---- step 1
   await record(1, 1600);
   check('step 1 captured a take', await page.evaluate(() => !!window.__sdrawkcab.takes.original));
@@ -486,6 +520,22 @@ try {
     `${offline.steps} steps, "${offline.label}"`);
   await context.setOffline(false);
   expectNetwork = true;
+
+  // An unrecognised failure must name itself, not hide behind a friendly line.
+  const diag = await page.evaluate(() => {
+    const g = window.__sdrawkcab;
+    g.handleError(Object.assign(new Error('boom'), { name: 'WeirdError' }));
+    const text = g.diagnosticsText();
+    return {
+      toast: document.getElementById('toast').textContent,
+      hasCause: text.includes('boom'),
+      hasContext: /context: \w+ @ \d+Hz/.test(text),
+      hasCapture: /capture: (worklet|scriptprocessor|none)/.test(text),
+    };
+  });
+  check('an unknown failure names its real cause', diag.toast.includes('boom'), diag.toast);
+  check('diagnostics carry the audio state', diag.hasContext && diag.hasCapture && diag.hasCause);
+  await page.evaluate(() => { window.__sdrawkcab.lastError = null; });
 
   check('no uncaught page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   check('every local asset loads', badRequests.length === 0, badRequests.slice(0, 3).join(' | '));
