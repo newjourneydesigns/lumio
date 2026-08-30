@@ -21,17 +21,42 @@ npm run dev       # serves src/ on http://localhost:8000
 `getUserMedia` requires a secure context, so use `localhost` or https — opening
 `index.html` from the filesystem will not work.
 
+## Installing it
+
+It ships as a PWA. On iOS, Share → Add to Home Screen; on Android, the install
+prompt appears on its own. An installed copy works with no signal — the service
+worker precaches the whole playable shell, and the fonts are self-hosted, so the
+game makes no third-party request while somebody is using their microphone.
+
+Icons and the share card are generated, not hand-drawn:
+
+```sh
+node scripts/make-icons.mjs
+```
+
+That renders `src/assets/icon-{192,512}.png`, a maskable variant, an
+`apple-touch-icon.png` (iOS ignores the manifest and applies its own mask, so it
+needs a full-bleed square of its own) and the 1200x630 `og.png`. The artwork is
+authored as HTML and screenshotted with the same engine that renders the game.
+
 ## Tests
 
 ```sh
 node tests/make-fixtures.mjs          # regenerate the synthetic audio fixtures
-node --test 'tests/**/*.test.mjs'     # scoring maths, in Node
-node tests/e2e.mjs                    # a full round in real Chromium, fake mic
+node --test 'tests/**/*.test.mjs'     # 17 checks on the scoring maths, in Node
+node tests/e2e.mjs                    # 43 checks: a full round in real Chromium
 ```
 
 The end-to-end test drives an actual browser with
 `--use-file-for-fake-audio-capture`, so microphone capture, the AudioWorklet,
 playback and the whole four-step flow are genuinely exercised rather than mocked.
+It also asserts the things that are easy to break and hard to notice: that
+`reverse(reverse(x))` is sample-exact on real browser audio, that every manifest
+icon resolves, that the share card really is 1200x630, and that the page still
+loads with the network cut.
+
+Not covered: iOS Safari, Android Chrome, Firefox and desktop Safari. Everything
+here has only ever run in headless Chromium on Linux with a synthetic voice.
 
 ## How it works
 
@@ -91,6 +116,18 @@ attempt 78, a sloppy one 44, and a completely different phrase 19. Speaking
 louder, quieter, faster or slower barely moves it, which is the point — those
 are not the thing being judged.
 
+### Touch behaviour
+
+`touch-action: manipulation` is set on the page and on every control. This is a
+tapping game — you hit the same big button twice in quick succession constantly
+— and without it iOS reads that as double-tap-to-zoom and throws the layout
+around mid-round. It is deliberately not `user-scalable=no`, which would also
+kill pinch-zoom and lock out anyone who needs to magnify the screen.
+
 ### Deployment
 
 Static, published from `src/`. See `netlify.toml`.
+
+There is deliberately no catch-all redirect: the app is a single page with no
+client-side routing, and a catch-all would turn every missing asset into a 200
+serving HTML, which hides real 404s and would poison the service worker cache.
