@@ -38,6 +38,8 @@ export class Game {
     this.engine = new AudioEngine();
     this.sfx = makeSfx(this.engine);
     this.step = 1;
+    this._playGen = 0;
+    this._pendingPlay = null;
     this.takes = { original: null, mimic: null };
     this.reversed = { original: null, mimic: null };
     this.result = null;
@@ -191,11 +193,20 @@ export class Game {
         ? COPY.steps[i - 1].buttonLabelDone
         : COPY.steps[i - 1].buttonLabel;
     }
+    // Extras first: they add roughly 100px of buttons to the active step, and
+    // scrolling before they exist leaves the primary button clipped off the
+    // bottom of the screen.
+    this.renderExtras();
+
     const active = this.stepEl(n);
     if (active && n > 1) {
       active.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+      // Focus follows the step, or a keyboard and screen-reader user is left
+      // on <body> every time the game advances. preventScroll so this does not
+      // fight the smooth scroll above.
+      const primary = active.querySelector('.step-primary');
+      if (primary && !primary.disabled) primary.focus({ preventScroll: true });
     }
-    this.renderExtras();
   }
 
   /** Secondary actions, rebuilt whenever the step changes. */
@@ -238,14 +249,20 @@ export class Game {
     // that window synchronously, before the first await.
     if (this.busy || this._entering) return;
     this._entering = true;
+    let action = null;
     try {
-      await this._runPrimary(n);
+      action = await this._startPrimary(n);
     } finally {
+      // Released once the action has started and taken `busy` — not once it
+      // finishes. Holding it for the whole recording would turn any stalled
+      // take into a permanently dead button.
       this._entering = false;
     }
+    await action;
   }
 
-  async _runPrimary(n) {
+  /** Starts the step's action and returns its promise without awaiting it. */
+  async _startPrimary(n) {
     // The first tap anywhere is what buys us a running AudioContext; iOS will
     // not start one outside a gesture, and will happily report "running" while
     // playing nothing if it was never primed.
@@ -259,16 +276,15 @@ export class Game {
       // explicit "Redo this bit" button, so a stray tap can never wipe a good take.
       if (done) {
         const take = this.takes[n === 1 ? 'original' : 'mimic'];
-        if (take) await this.playBuffer(n, take.buffer);
-        return;
+        return take ? this.playBuffer(n, take.buffer) : null;
       }
-      await this.doRecord(n);
-      return;
+      return this.doRecord(n);
     }
-    await this.doPlay(n);
+    return this.doPlay(n);
   }
 
   async doRecord(n) {
+    if (this.busy) return;
     const el = this.stepEl(n);
     const primary = el.querySelector('.step-primary');
     const wave = this.waves[n];
@@ -353,7 +369,12 @@ export class Game {
   async doPlay(n) {
     const buffer = n === 2 ? this.reversed.original : this.reversed.mimic;
     if (!buffer) return;
-    await this.playBuffer(n, buffer);
+    const heard = await this.playBuffer(n, buffer);
+
+    // Unlocking step 3 and revealing the score are the only irreversible
+    // transitions in the game, so neither may fire off a clip that was cut
+    // short or never started. playBuffer reports what actually happened.
+    if (!heard) return;
 
     if (n === 2) {
       // Listening once is what unlocks the imitation step.
@@ -380,7 +401,7 @@ export class Game {
 
   /** Plays a buffer through one step's waveform, animating the playhead. */
   async playBuffer(n, buffer, { rate = 1 } = {}) {
-    if (this.busy) return;
+    if (this.busy) return false;
     this.maybeWarnAboutSilentSwitch();
     this.setBusy(true);
     const el = this.stepEl(n);
@@ -388,6 +409,16 @@ export class Game {
     const label = primary.textContent;
     const wave = this.waves[n];
     primary.textContent = COPY.microcopy.playing;
+
+    // If an interruption tears this playback down, recover() bumps the
+    // generation and performs the restore itself. Without the token, this
+    // invocation's finally would later clobber a newer playback's UI.
+    const gen = ++this._playGen;
+    const restore = () => {
+      wave.setProgress(0);
+      primary.textContent = label;
+    };
+    this._pendingPlay = { gen, restore };
 
     const duration = buffer.duration / rate;
     const start = performance.now();
@@ -399,16 +430,20 @@ export class Game {
     };
     raf = requestAnimationFrame(animate);
 
+    let heard = false;
     try {
-      await this.engine.play(buffer, { rate });
+      heard = await this.engine.play(buffer, { rate });
     } catch (err) {
       this.handleError(err);
     } finally {
       cancelAnimationFrame(raf);
-      wave.setProgress(0);
-      primary.textContent = label;
-      this.setBusy(false);
+      if (gen === this._playGen) {
+        this._pendingPlay = null;
+        restore();
+        this.setBusy(false);
+      }
     }
+    return heard;
   }
 
   /* ---------------- scoring + result ---------------- */
@@ -537,6 +572,10 @@ export class Game {
     this.redoFrom(1);
     this.shufflePhrase();
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    // "Go again" hides its own button, so without this focus lands on <body>
+    // and a keyboard user has to tab in from the top of the document again.
+    const first = this.stepEl(1).querySelector('.step-primary');
+    if (first) first.focus({ preventScroll: true });
   }
 
   resetStepUi(n) {
@@ -546,7 +585,16 @@ export class Game {
   }
 
   recover(message) {
+    this.engine.stopPlayback();
     this.engine.releaseMic();
+    // A suspended context never dispatches onended, so the in-flight
+    // playBuffer's finally may never run. Invalidate it and put the UI back
+    // ourselves, or the step button stays stuck on "Playing…" forever.
+    this._playGen++;
+    if (this._pendingPlay) {
+      this._pendingPlay.restore();
+      this._pendingPlay = null;
+    }
     this.setBusy(false);
     this.toast(message);
   }

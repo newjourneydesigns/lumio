@@ -88,6 +88,8 @@ try {
     };
   });
   check('double-tap zoom is disabled on the page', touch.body === 'manipulation', touch.body);
+  check('the toast never swallows a tap',
+    await page.evaluate(() => getComputedStyle(document.getElementById('toast')).pointerEvents === 'none'));
   check('double-tap zoom is disabled on buttons', touch.button === 'manipulation', touch.button);
   check('buttons do not select text on long press', touch.buttonSelect === 'none', touch.buttonSelect);
   check('the page does not rubber-band', touch.overscroll === 'none', touch.overscroll);
@@ -222,8 +224,44 @@ try {
     `peak ${heard.peak}, rms ${heard.rms}`);
   check('the output bus is not muted', await page.evaluate(() => window.__sdrawkcab.engine.out.gain.value === 1));
 
+  // Cutting a clip short must NOT advance the game: unlocking step 3 and
+  // revealing the score are the only irreversible transitions there are.
+  const cutShort = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const p = g.doPlay(2);
+    await new Promise((r) => setTimeout(r, 150));
+    g.engine.stopPlayback();
+    await p;
+    return { step: g.step, state: document.querySelector('.step[data-step="3"]').dataset.state };
+  });
+  check('a clip cut short does not unlock the next step',
+    cutShort.step === 2 && cutShort.state === 'locked', `step ${cutShort.step}/${cutShort.state}`);
+
   await playThrough(2);
   check('step 3 unlocked after listening', (await stepState(3)) === 'active');
+
+  // The primary button must be fully on screen after the step advances —
+  // the extras are built after the scroll target is measured.
+  // scrollIntoView is smooth, so wait for the page to actually stop moving.
+  await page.evaluate(() => new Promise((resolve) => {
+    let last = -1;
+    let still = 0;
+    const tick = () => {
+      still = window.scrollY === last ? still + 1 : 0;
+      last = window.scrollY;
+      if (still > 5) return resolve();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+  const fits = await page.evaluate(() => {
+    const b = document.querySelector('.step[data-step="3"] .step-primary').getBoundingClientRect();
+    return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: innerHeight };
+  });
+  check('the active step button is fully visible', fits.top >= 0 && fits.bottom <= fits.h,
+    `${fits.top}..${fits.bottom} of ${fits.h}`);
+  check('focus follows the active step',
+    await page.evaluate(() => document.activeElement === document.querySelector('.step[data-step="3"] .step-primary')));
 
   // ---- step 3
   await record(3, 1600);
@@ -282,11 +320,25 @@ try {
   check('replaying the reveal does not re-count the round',
     await page.evaluate(() => JSON.parse(localStorage.getItem('sdrawkcab:v1')).rounds === 1));
 
+  // A 404 must never be cached as the offline shell — the whole game would be
+  // replaced by an error page for good.
+  const shell = await page.evaluate(async () => {
+    const before = await (await caches.open((await caches.keys())[0])).match('./index.html');
+    const beforeLen = (await before.text()).length;
+    await fetch('./definitely-not-real', { mode: 'navigate' }).catch(() => {});
+    const after = await (await caches.open((await caches.keys())[0])).match('./index.html');
+    const text = await after.text();
+    return { same: text.length === beforeLen, isGame: text.includes('id="steps"') };
+  });
+  check('a 404 does not poison the cached app shell', shell.same && shell.isGame);
+
   // ---- go again resets cleanly
   await page.locator('#again-btn').click();
   check('reset returns to step 1', (await stepState(1)) === 'active');
   check('reset clears the takes', await page.evaluate(() => !window.__sdrawkcab.takes.original));
   check('reset hides the result', await page.locator('#result').isHidden());
+  check('reset moves focus to step 1, not the body',
+    await page.evaluate(() => document.activeElement === document.querySelector('.step[data-step="1"] .step-primary')));
 
   // ---- installable as an app, and shareable
   const manifest = await page.evaluate(async () => {

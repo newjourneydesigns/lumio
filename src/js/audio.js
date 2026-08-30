@@ -150,6 +150,19 @@ export class AudioEngine {
    * unprimed context will happily report "running" and play nothing.
    */
   async unlock() {
+    // Deduped: unlock() is awaited from onPrimary, record() and play(), and its
+    // ctx.resume() is a real await on iOS. Without this, two taps arriving a
+    // frame apart both pass their own guards inside that window.
+    if (this._unlocking) return this._unlocking;
+    this._unlocking = this._unlock();
+    try {
+      return await this._unlocking;
+    } finally {
+      this._unlocking = null;
+    }
+  }
+
+  async _unlock() {
     if (!this.ctx) {
       const Ctor = window.AudioContext || window.webkitAudioContext;
       if (!Ctor) throw new AudioError('unsupported', 'This browser has no Web Audio support.');
@@ -214,8 +227,23 @@ export class AudioEngine {
     if (this.stream) {
       const live = this.stream.getAudioTracks().some((t) => t.readyState === 'live');
       if (live) return this.stream;
+      // Stale: drop the old graph before re-acquiring, or _buildGraph would
+      // overwrite source/worklet/sink and leak the previous ones.
       this.releaseMic();
     }
+    // getUserMedia is a long await; without sharing the in-flight promise a
+    // second caller sails past the check above and triggers a second
+    // permission prompt.
+    if (this._micPromise) return this._micPromise;
+    this._micPromise = this._acquireMic();
+    try {
+      return await this._micPromise;
+    } finally {
+      this._micPromise = null;
+    }
+  }
+
+  async _acquireMic() {
     const problem = environmentProblem();
     if (problem) throw new AudioError(problem, 'Recording is not available here.');
 
@@ -325,6 +353,7 @@ export class AudioEngine {
       this.worklet.port.onmessage = (e) => this._onAudioPacket(e.data);
       this.source.connect(this.worklet);
       this.worklet.connect(this.sink);
+      this.processor = null; // never hold both capture paths at once
       return;
     }
 
@@ -347,20 +376,26 @@ export class AudioEngine {
     };
     this.source.connect(this.processor);
     this.processor.connect(this.sink);
+    this.worklet = null;
   }
 
   async _loadWorklet() {
     const ctx = this.ctx;
     if (!ctx.audioWorklet || typeof ctx.audioWorklet.addModule !== 'function') return false;
     if (AudioEngine._workletLoaded.has(ctx)) return true;
-    const url = new URL('../audio/take-capture.worklet.js', import.meta.url).href;
-    try {
-      await ctx.audioWorklet.addModule(url);
-      AudioEngine._workletLoaded.add(ctx);
-      return true;
-    } catch {
-      return false;
+    // Two concurrent addModule() calls for the same source make the second
+    // reject on a duplicate registerProcessor, which would silently drop the
+    // graph onto the ScriptProcessor fallback mid-session.
+    let pending = AudioEngine._workletPending.get(ctx);
+    if (!pending) {
+      const url = new URL('../audio/take-capture.worklet.js', import.meta.url).href;
+      pending = ctx.audioWorklet.addModule(url)
+        .then(() => { AudioEngine._workletLoaded.add(ctx); return true; })
+        .catch(() => false)
+        .finally(() => AudioEngine._workletPending.delete(ctx));
+      AudioEngine._workletPending.set(ctx, pending);
     }
+    return pending;
   }
 
   /* ---- recording ---- */
@@ -387,21 +422,35 @@ export class AudioEngine {
    */
   async record({ maxSeconds = MAX_TAKE_SECONDS, onStart } = {}) {
     if (this._recording) throw new AudioError('busy', 'Already recording.');
-    if (!this.ready) await this.unlock();
-    await this.acquireMic();
 
-    const ctx = this.ctx;
+    // Claim the slot before the first await. `if (this._recording)` above is a
+    // pre-await check like every other one in this file, and unlock() and
+    // acquireMic() are both long awaits — a second caller would otherwise race
+    // straight through and orphan the first take's promise forever.
     const rec = {
       chunks: [],
       frames: 0,
       armed: false,
-      maxFrames: Math.floor(maxSeconds * ctx.sampleRate),
-      sampleRate: ctx.sampleRate,
+      maxFrames: 0,
+      sampleRate: 0,
       resolve: null,
       reject: null,
     };
     this._recording = rec;
     const done = new Promise((resolve, reject) => { rec.resolve = resolve; rec.reject = reject; });
+
+    try {
+      if (!this.ready) await this.unlock();
+      await this.acquireMic();
+    } catch (err) {
+      if (this._recording === rec) this._recording = null;
+      throw err;
+    }
+    if (this._recording !== rec) return done; // aborted while acquiring
+
+    const ctx = this.ctx;
+    rec.maxFrames = Math.floor(maxSeconds * ctx.sampleRate);
+    rec.sampleRate = ctx.sampleRate;
 
     // Let the mic ramp before we start keeping samples, otherwise the opening
     // syllable arrives hollow — and on the reversed clip that is the *ending*,
@@ -479,7 +528,8 @@ export class AudioEngine {
    *
    * @param {AudioBuffer} buffer
    * @param {{onEnded?: Function, rate?: number}} options
-   * @returns {Promise<void>} resolves when playback finishes or is stopped
+   * @returns {Promise<boolean>} true if the clip played to its end, false if it
+   *   was stopped or interrupted part-way
    */
   async play(buffer, { onEnded, rate = 1 } = {}) {
     if (!this.ready) await this.unlock();
@@ -507,9 +557,12 @@ export class AudioEngine {
         source.disconnect();
         if (this.playing === source) this.playing = null;
         if (onEnded) onEnded();
-        resolve();
+        // true only if the clip ran to its natural end. A suspended context
+        // never dispatches onended, so stopPlayback settles this directly.
+        resolve(!source.__stopped);
       };
       source.onended = finish;
+      source.__finish = finish;
       this.playing = source;
       source.start(0);
     });
@@ -519,7 +572,11 @@ export class AudioEngine {
     const source = this.playing;
     if (!source) return;
     this.playing = null;
+    // Marked before stopping so play()'s promise can report that the clip was
+    // cut short rather than heard to the end.
+    source.__stopped = true;
     try { source.stop(); } catch { /* never started, or already stopped */ }
+    if (source.__finish) source.__finish();
   }
 
   get isPlaying() {
@@ -562,6 +619,7 @@ export class AudioEngine {
 }
 
 AudioEngine._workletLoaded = new WeakSet();
+AudioEngine._workletPending = new WeakMap();
 
 /**
  * Conservative end-trim applied once at capture. Deliberately gentler than the

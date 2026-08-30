@@ -60,11 +60,23 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put('./index.html', copy));
+          // Only cache a real page. Without the ok check a 404 or a 502 — or a
+          // captive portal's sign-in page — gets stored as the offline app
+          // shell, and the game is replaced by that error page for good.
+          if (response && response.ok && !response.redirected) {
+            const copy = response.clone();
+            // Tied to the event: a floating promise can be cut off when the
+            // service worker is terminated after respondWith settles.
+            event.waitUntil(caches.open(CACHE).then((cache) => cache.put('./index.html', copy)));
+          }
           return response;
         })
-        .catch(() => caches.match('./index.html').then((r) => r || Response.error())),
+        // './' is precached at install and is never overwritten here, so it is
+        // the trustworthy fallback even for a client already carrying a bad
+        // './index.html' from an earlier version of this worker.
+        .catch(() => caches.match('./index.html')
+          .then((r) => r || caches.match('./'))
+          .then((r) => r || Response.error())),
     );
     return;
   }

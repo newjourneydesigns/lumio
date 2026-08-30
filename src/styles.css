@@ -378,6 +378,10 @@ body {
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 30;
+  /* The toast sits over the primary button on short screens; without this it
+     swallows taps for the 2.6s it is visible. It is role="status" with nothing
+     interactive inside, so nothing is lost. */
+  pointer-events: none;
   max-width: min(92vw, 420px);
   padding: 12px 18px;
   border-radius: 999px;
