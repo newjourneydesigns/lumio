@@ -206,7 +206,16 @@ export class AudioEngine {
   /* ---- microphone ---- */
 
   async acquireMic() {
-    if (this.stream) return this.stream;
+    // A cached stream is only reusable while its track is still live. The OS or
+    // the user can revoke the microphone at any moment, and a revoked track
+    // stays attached to the stream in an 'ended' state — handing that back would
+    // record digital silence for the rest of the session, with no error and no
+    // way out but a reload.
+    if (this.stream) {
+      const live = this.stream.getAudioTracks().some((t) => t.readyState === 'live');
+      if (live) return this.stream;
+      this.releaseMic();
+    }
     const problem = environmentProblem();
     if (problem) throw new AudioError(problem, 'Recording is not available here.');
 
@@ -247,7 +256,12 @@ export class AudioEngine {
     const track = stream.getAudioTracks()[0];
     if (track) {
       // The OS or the user can yank the device out from under us at any time.
-      track.onended = () => this._abortRecording('device-lost');
+      // Drop the whole stream with it, so the next take acquires a fresh one
+      // rather than reusing a dead track.
+      track.onended = () => {
+        this._abortRecording('device-lost');
+        this.releaseMic();
+      };
       track.onmute = () => this._abortRecording('interrupted');
     }
     await this._buildGraph();

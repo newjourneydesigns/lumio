@@ -113,6 +113,28 @@ try {
     await page.waitForFunction(() => !window.__sdrawkcab.busy, null, { timeout: 15000 });
   }
 
+  // A fast double-tap must not race two recordings into getUserMedia.
+  const races = await page.evaluate(async () => {
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let calls = 0;
+    navigator.mediaDevices.getUserMedia = (c) => { calls++; return real(c); };
+    const btn = document.querySelector('.step[data-step="1"] .step-primary');
+    btn.click();
+    btn.click();
+    btn.click();
+    await new Promise((r) => setTimeout(r, 700));
+    const streams = window.__sdrawkcab.engine.stream
+      ? window.__sdrawkcab.engine.stream.getAudioTracks().length : 0;
+    window.__sdrawkcab.engine.stopRecording();
+    await new Promise((r) => setTimeout(r, 300));
+    navigator.mediaDevices.getUserMedia = real;
+    return { calls, streams };
+  });
+  check('three fast taps open the mic once, not three times', races.calls === 1,
+    `${races.calls} getUserMedia calls`);
+  await page.evaluate(() => window.__sdrawkcab.redoFrom(1));
+  await page.waitForTimeout(200);
+
   // ---- step 1
   await record(1, 1600);
   check('step 1 captured a take', await page.evaluate(() => !!window.__sdrawkcab.takes.original));
@@ -148,6 +170,20 @@ try {
     return lit;
   });
   check('step 1 waveform is drawn', drew > 200, `${drew} lit pixels`);
+
+  // A microphone revoked mid-session must not be handed back from cache: a
+  // dead track records digital silence forever, with no error to explain it.
+  const revoked = await page.evaluate(async () => {
+    const engine = window.__sdrawkcab.engine;
+    await engine.acquireMic();
+    const first = engine.stream;
+    first.getAudioTracks().forEach((t) => t.stop()); // simulate the OS revoking it
+    const reused = await engine.acquireMic();
+    const live = reused.getAudioTracks().every((t) => t.readyState === 'live');
+    engine.releaseMic();
+    return { replaced: reused !== first, live };
+  });
+  check('a revoked microphone is replaced, not reused', revoked.replaced && revoked.live);
 
   // ---- step 2: prove playback actually carries signal.
   // "I can't hear it" has two very different causes — the app emitting silence,
@@ -216,6 +252,22 @@ try {
 
   check('microphone released after the round',
     await page.evaluate(() => !window.__sdrawkcab.engine.stream));
+
+  // "Go again" used to scroll and reshuffle while quietly declining to reset,
+  // because redoFrom() bails on `busy`. It should look as disabled as it acts.
+  const busyUi = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const p = g.playBuffer(4, g.reversed.mimic);
+    await new Promise((r) => setTimeout(r, 120));
+    const state = {
+      again: document.getElementById('again-btn').disabled,
+      share: document.getElementById('share-btn').disabled,
+    };
+    g.engine.stopPlayback();
+    await p;
+    return state;
+  });
+  check('result buttons disable while audio is playing', busyUi.again && busyUi.share);
 
   // ---- a finished record step replays; it must never quietly re-record
   const before = await page.evaluate(() => window.__sdrawkcab.takes.original.duration);

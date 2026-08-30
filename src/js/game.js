@@ -232,7 +232,20 @@ export class Game {
   /* ---------------- actions ---------------- */
 
   async onPrimary(n) {
-    if (this.busy) return;
+    // `busy` is not set until doRecord/playBuffer runs, which is several awaits
+    // away — so two quick taps would both clear a `busy` check and race into
+    // getUserMedia together, orphaning a microphone stream. This flag closes
+    // that window synchronously, before the first await.
+    if (this.busy || this._entering) return;
+    this._entering = true;
+    try {
+      await this._runPrimary(n);
+    } finally {
+      this._entering = false;
+    }
+  }
+
+  async _runPrimary(n) {
     // The first tap anywhere is what buys us a running AudioContext; iOS will
     // not start one outside a gesture, and will happily report "running" while
     // playing nothing if it was never primed.
@@ -303,6 +316,11 @@ export class Game {
       clearInterval(this._timer);
       this._timer = null;
       this.engine.onLevel = null;
+      // Release on every path, not just the successful one. A failed or
+      // interrupted take used to leave the track open, so the OS recording
+      // indicator stayed lit while the game sat idle — which reasonably reads
+      // as "this thing is still listening to me".
+      this.engine.releaseMic();
       el.classList.remove('is-recording');
       primary.classList.remove('is-live');
       timer.hidden = true;
@@ -542,6 +560,10 @@ export class Game {
       primary.disabled = locked || (value && i !== this.step);
       el.querySelectorAll('.step-extras .btn').forEach((b) => { b.disabled = value; });
     }
+    // These were left enabled while audio played, so "Go again" would scroll
+    // and reshuffle the phrase but quietly decline to reset anything.
+    this.el.againBtn.disabled = value;
+    this.el.shareBtn.disabled = value;
   }
 
   /* ---------------- messaging ---------------- */

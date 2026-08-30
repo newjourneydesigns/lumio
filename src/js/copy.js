@@ -77,7 +77,7 @@ export const COPY = {
     slower: 'Play it slower',
     redo: 'Redo this bit',
     goAgain: 'Go again',
-    shareButton: 'Share the evidence',
+    shareButton: 'Share with your friends',
     shareText: 'I scored {score} trying to talk backwards. Beat that.',
     downloaded: 'Saved. Send it to someone.',
     resultKicker: 'The verdict',
