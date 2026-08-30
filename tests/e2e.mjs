@@ -365,6 +365,63 @@ try {
   check('focus follows the active step',
     await page.evaluate(() => document.activeElement === document.querySelector('.step[data-step="3"] .step-primary')));
 
+  // ---- the mic pre-warms once a recording step is imminent, so recording
+  // starts instantly instead of paying getUserMedia plus the 250ms mic ramp.
+  await page.waitForFunction(() => !!window.__sdrawkcab.engine.stream, null, { timeout: 3000 })
+    .catch(() => {});
+  const warm = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const prewarmed = !!g.engine.stream;
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let gumCalls = 0;
+    navigator.mediaDevices.getUserMedia = (c) => { gumCalls++; return real(c); };
+    const t0 = performance.now();
+    let startDelay = -1;
+    const p = g.engine.record({ maxSeconds: 5, onStart: () => { startDelay = performance.now() - t0; } });
+    await new Promise((r) => setTimeout(r, 700));
+    g.engine.stopRecording();
+    await p.catch(() => {});
+    navigator.mediaDevices.getUserMedia = real;
+    return { prewarmed, gumCalls, startDelay: Math.round(startDelay) };
+  });
+  check('the mic is pre-warmed before the record step is tapped', warm.prewarmed);
+  check('a warm recording starts without a fresh getUserMedia', warm.gumCalls === 0);
+  check('a warm recording starts near-instantly (skips the 250ms ramp)',
+    warm.startDelay >= 0 && warm.startDelay < 150, `${warm.startDelay}ms`);
+
+  // Playback must evict a warmed mic (a live capture track routes iOS audio to
+  // the earpiece) and re-warm it afterwards.
+  const evict = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    g.engine.prewarm();
+    await new Promise((r) => setTimeout(r, 400));
+    const before = !!g.engine.stream;
+    const play = g.playBuffer(2, g.reversed.original);
+    await new Promise((r) => setTimeout(r, 150));
+    const during = !!g.engine.stream;
+    await play;
+    await new Promise((r) => setTimeout(r, 400));
+    const after = !!g.engine.stream;
+    return { before, during, after };
+  });
+  check('playback evicts the warmed mic and re-warms after',
+    evict.before && !evict.during && evict.after, JSON.stringify(evict));
+
+  // A warmed mic under an abandoned phone must go dark on its own.
+  const idle = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    g.engine.releaseMic();
+    g.engine.prewarm(300);
+    // Probe while the idle window is still open, then after it closes.
+    await new Promise((r) => setTimeout(r, 150));
+    const held = !!g.engine.stream;
+    await new Promise((r) => setTimeout(r, 600));
+    return { held, released: !g.engine.stream };
+  });
+  check('an unused warm mic releases itself', idle.held && idle.released, JSON.stringify(idle));
+  await page.evaluate(() => window.__sdrawkcab.engine.prewarm());
+  await page.waitForFunction(() => !!window.__sdrawkcab.engine.stream, null, { timeout: 2000 }).catch(() => {});
+
   // ---- step 3
   await record(3, 1600);
   check('step 3 captured a mimic', await page.evaluate(() => !!window.__sdrawkcab.takes.mimic));

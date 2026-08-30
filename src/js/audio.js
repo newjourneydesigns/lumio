@@ -315,7 +315,32 @@ export class AudioEngine {
       track.onmute = () => this._abortRecording('interrupted');
     }
     await this._buildGraph();
+    // The warm-up before arming exists because a fresh mic ramps; a stream
+    // that has already been live for that long needs no extra wait.
+    this._streamReadyAt = performance.now();
+    this._hasAcquired = true;
     return stream;
+  }
+
+  /**
+   * Opens the microphone ahead of the tap, so record() starts instantly
+   * instead of paying getUserMedia (0.5-1.5s on a phone) plus the warm-up.
+   *
+   * Deliberately conservative about when it will run: never before the first
+   * real, user-initiated acquisition (so it can never raise a permission
+   * prompt on its own — including Firefox's per-visit one), and it re-releases
+   * the mic after a quiet timeout so the OS recording indicator cannot sit lit
+   * under an abandoned phone. Failures are swallowed; the real record() call
+   * is where errors get surfaced.
+   */
+  prewarm(idleMs = 20000) {
+    if (!this._hasAcquired || this.stream || this._micPromise || this._recording) return;
+    this.acquireMic().then(() => {
+      clearTimeout(this._prewarmTimer);
+      this._prewarmTimer = setTimeout(() => {
+        if (!this._recording && !this.isRecording) this.releaseMic();
+      }, idleMs);
+    }).catch(() => { /* the real tap will surface it */ });
   }
 
   /**
@@ -324,6 +349,7 @@ export class AudioEngine {
    * assume a lit mic dot means the game is still listening.
    */
   releaseMic() {
+    clearTimeout(this._prewarmTimer);
     this._abortRecording('released');
     if (this.stream) {
       this.stream.getTracks().forEach((t) => {
@@ -459,6 +485,7 @@ export class AudioEngine {
       reject: null,
     };
     this._recording = rec;
+    clearTimeout(this._prewarmTimer);
     const done = new Promise((resolve, reject) => { rec.resolve = resolve; rec.reject = reject; });
 
     try {
@@ -478,8 +505,11 @@ export class AudioEngine {
 
     // Let the mic ramp before we start keeping samples, otherwise the opening
     // syllable arrives hollow — and on the reversed clip that is the *ending*,
-    // which is the punchline.
-    await new Promise((r) => setTimeout(r, WARMUP_MS));
+    // which is the punchline. A pre-warmed stream has already served this
+    // wait, so only the remainder (usually zero) is paid here.
+    const age = performance.now() - (this._streamReadyAt || 0);
+    const remaining = Math.max(0, WARMUP_MS - age);
+    if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
     if (this._recording !== rec) return done; // aborted during warm-up
 
     rec.armed = true;

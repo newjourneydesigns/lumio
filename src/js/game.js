@@ -230,6 +230,23 @@ export class Game {
 
   stepEl(n) { return this.el.steps.querySelector(`[data-step="${n}"]`); }
 
+  /**
+   * Warms the microphone whenever a recording step is the next thing the
+   * player will do, so the record button starts instantly instead of paying
+   * getUserMedia plus the mic ramp on the tap.
+   *
+   * Never while audio is playing: holding an open capture track drags iOS
+   * into a play-and-record session, which routes playback to the earpiece —
+   * the silent-playback bug this project already fixed once. Playback paths
+   * release the mic first and this re-warms it afterwards.
+   */
+  maybePrewarm() {
+    if (this.busy || this.engine.isPlaying) return;
+    const el = this.stepEl(this.step);
+    const isRecordStep = STEP_KIND[this.step - 1] === 'record';
+    if (isRecordStep && el && el.dataset.state === 'active') this.engine.prewarm();
+  }
+
   setStep(n) {
     this.step = n;
     for (let i = 1; i <= 4; i++) {
@@ -256,6 +273,7 @@ export class Game {
       const primary = active.querySelector('.step-primary');
       if (primary && !primary.disabled) primary.focus({ preventScroll: true });
     }
+    this.maybePrewarm();
   }
 
   /** Secondary actions, rebuilt whenever the step changes. */
@@ -462,6 +480,10 @@ export class Game {
     // If an interruption tears this playback down, recover() bumps the
     // generation and performs the restore itself. Without the token, this
     // invocation's finally would later clobber a newer playback's UI.
+    // A warmed mic must not survive into playback: a live capture track holds
+    // iOS in play-and-record, which sends this clip to the earpiece.
+    if (this.engine.stream && !this.engine.isRecording) this.engine.releaseMic();
+
     const gen = ++this._playGen;
     const restore = () => {
       wave.setProgress(0);
@@ -490,6 +512,7 @@ export class Game {
         this._pendingPlay = null;
         restore();
         this.setBusy(false);
+        this.maybePrewarm();
       }
     }
     return heard;
