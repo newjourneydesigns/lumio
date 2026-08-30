@@ -60,9 +60,15 @@ test('nothing that would embarrass someone reading it out loud', () => {
 test('the list is varied, not one joke repeated', () => {
   // No single word may dominate: a list of forty "cheese X" entries would read
   // as padding rather than range.
+  // Function words carry no theme, so counting them would measure grammar
+  // rather than range.
+  const STOP = new Set(['a', 'an', 'the', 'in', 'on', 'of', 'to', 'at', 'and']);
   const counts = new Map();
   for (const p of PHRASES) {
-    for (const w of p.split(' ')) counts.set(w, (counts.get(w) || 0) + 1);
+    for (const w of p.split(' ')) {
+      if (STOP.has(w)) continue;
+      counts.set(w, (counts.get(w) || 0) + 1);
+    }
   }
   const worst = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
   console.log('   most repeated word ->', worst[0], 'x' + worst[1]);
