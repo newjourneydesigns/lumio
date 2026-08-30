@@ -156,6 +156,14 @@ export class AudioEngine {
       // Deliberately no sampleRate option: forcing one inserts a resampler
       // between the hardware and the graph on iOS, which crackles.
       this.ctx = new Ctor({ latencyHint: 'interactive' });
+
+      // Everything audible goes through one output bus rather than straight to
+      // ctx.destination. It gives us a single place to measure, mute or duck
+      // the game's output, and it is what the tests tap to prove that playback
+      // actually carries signal.
+      this.out = this.ctx.createGain();
+      this.out.gain.value = 1;
+      this.out.connect(this.ctx.destination);
       this.ctx.onstatechange = () => {
         // iOS adds a non-standard 'interrupted' state (a call, Siri, the alarm).
         if (this.ctx.state !== 'running' && this.onInterrupted) this.onInterrupted(this.ctx.state);
@@ -168,11 +176,31 @@ export class AudioEngine {
     silent.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
     silent.connect(this.ctx.destination);
     silent.start(0);
+    this.setAudioSession('playback');
     return this.ctx.state === 'running';
   }
 
   get ready() {
     return !!this.ctx && this.ctx.state === 'running';
+  }
+
+  /**
+   * Declares what the page is doing with audio, which on iOS decides both the
+   * output route and whether the hardware ring/silent switch applies.
+   *
+   * This is the single most common reason a web audio game is silent on an
+   * iPhone and fine everywhere else. Left alone, Safari treats Web Audio as an
+   * "ambient" session, so the physical silent switch mutes it outright — and
+   * while a microphone track is live the session becomes play-and-record,
+   * which routes output to the earpiece at the top of the phone instead of the
+   * loudspeaker. Both land on the player as "playback doesn't work".
+   *
+   * navigator.audioSession is iOS 16.4+; elsewhere this is a no-op.
+   */
+  setAudioSession(type) {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = type;
+    } catch { /* not supported here, and nothing we can do about it */ }
   }
 
   /* ---- microphone ---- */
@@ -214,6 +242,7 @@ export class AudioEngine {
       }
     }
 
+    this.setAudioSession('play-and-record');
     this.stream = stream;
     const track = stream.getAudioTracks()[0];
     if (track) {
@@ -253,6 +282,9 @@ export class AudioEngine {
       this.processor = null;
     }
     if (this.sink) { this.sink.disconnect(); this.sink = null; }
+    // Hand the session back, so the next playback goes to the loudspeaker
+    // rather than staying stuck on the earpiece route recording put us in.
+    this.setAudioSession('playback');
     // The AudioContext itself stays alive on purpose: iOS is slow to open new
     // ones and has a small cap on how many can exist.
   }
@@ -439,12 +471,17 @@ export class AudioEngine {
     if (!this.ready) await this.unlock();
     this.stopPlayback();
 
+    // Claim a playback session before every play, not just at unlock: after a
+    // recording step iOS is still in play-and-record and would send this to the
+    // earpiece.
+    this.setAudioSession('playback');
+
     const source = this.ctx.createBufferSource();
     source.buffer = await this._matchRate(buffer);
     // Slowing playback is a real help: reversed speech is much easier to copy
     // at 70% speed, and it keeps a hard round from becoming a dead end.
     source.playbackRate.value = rate;
-    source.connect(this.ctx.destination);
+    source.connect(this.out);
 
     return new Promise((resolve) => {
       let settled = false;

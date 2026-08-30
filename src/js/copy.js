@@ -83,6 +83,7 @@ export const COPY = {
     resultKicker: 'The verdict',
     streak: 'Best {best} · {rounds} round{s} played',
     tooQuiet: "We couldn't hear that one. Try again, louder.",
+    silentSwitch: 'Hearing nothing? Check the silent switch on the side of your phone, and turn the volume up.',
     interrupted: 'Something interrupted that take. Give it another go.',
     suspicious: 'That was flawless. Suspiciously flawless. We are watching you.',
     howToPlay: [

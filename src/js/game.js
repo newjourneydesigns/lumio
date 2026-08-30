@@ -345,9 +345,25 @@ export class Game {
     }
   }
 
+  /**
+   * On iOS the physical ring/silent switch mutes Web Audio unless the page can
+   * claim a playback audio session — and that API only exists on 16.4+. Where
+   * we cannot claim it, say so once rather than leaving someone tapping a
+   * button that appears to do nothing.
+   */
+  maybeWarnAboutSilentSwitch() {
+    if (this._warnedSilent) return;
+    const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!iOS || navigator.audioSession) return;
+    this._warnedSilent = true;
+    this.toast(COPY.microcopy.silentSwitch);
+  }
+
   /** Plays a buffer through one step's waveform, animating the playhead. */
   async playBuffer(n, buffer, { rate = 1 } = {}) {
     if (this.busy) return;
+    this.maybeWarnAboutSilentSwitch();
     this.setBusy(true);
     const el = this.stepEl(n);
     const primary = el.querySelector('.step-primary');

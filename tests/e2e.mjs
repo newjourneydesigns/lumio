@@ -149,7 +149,43 @@ try {
   });
   check('step 1 waveform is drawn', drew > 200, `${drew} lit pixels`);
 
-  // ---- step 2
+  // ---- step 2: prove playback actually carries signal.
+  // "I can't hear it" has two very different causes — the app emitting silence,
+  // or the device swallowing real audio — and only one of them is ours. Tapping
+  // the output bus with an analyser tells them apart.
+  const heard = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const ctx = g.engine.ctx;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    g.engine.out.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    let peak = 0;
+    let sum = 0;
+    let frames = 0;
+    const done = g.engine.play(g.reversed.original);
+    await new Promise((resolve) => {
+      const tick = () => {
+        analyser.getFloatTimeDomainData(buf);
+        for (let i = 0; i < buf.length; i++) {
+          const a = Math.abs(buf[i]);
+          if (a > peak) peak = a;
+          sum += buf[i] * buf[i];
+          frames++;
+        }
+        if (g.engine.isPlaying) requestAnimationFrame(tick);
+        else resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+    await done;
+    g.engine.out.disconnect(analyser);
+    return { peak: +peak.toFixed(4), rms: +Math.sqrt(sum / Math.max(1, frames)).toFixed(4) };
+  });
+  check('playback puts real signal on the output bus', heard.peak > 0.01,
+    `peak ${heard.peak}, rms ${heard.rms}`);
+  check('the output bus is not muted', await page.evaluate(() => window.__sdrawkcab.engine.out.gain.value === 1));
+
   await playThrough(2);
   check('step 3 unlocked after listening', (await stepState(3)) === 'active');
 

@@ -20,7 +20,7 @@ export function makeSfx(engine) {
     amp.gain.exponentialRampToValueAtTime(gain, now + 0.012);
     amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
     osc.connect(amp);
-    amp.connect(ctx.destination);
+    amp.connect(engine.out || ctx.destination);
     osc.start(now);
     osc.stop(now + duration + 0.02);
     osc.onended = () => { osc.disconnect(); amp.disconnect(); };
