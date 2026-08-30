@@ -445,6 +445,43 @@ try {
   }));
   check('result panel shows a score', shown.score >= 18 && shown.score <= 99, String(shown.score));
   check('result has a rank and a quip', !!shown.title && !!shown.quip, shown.title);
+
+  // The classic confused player says the phrase forwards instead of copying
+  // the gibberish. Built deterministically from the round's own original take
+  // (the fake mic loops its fixture, so the round's two takes are different
+  // slices and can't be used as an exact repeat).
+  const mirror = await page.evaluate(async () => {
+    const g = window.__sdrawkcab;
+    const { scoreAttempt } = await import('./js/dsp.js');
+    const { reverseBuffer } = await import('./js/audio.js');
+    const confused = scoreAttempt(g.takes.original.buffer,
+      reverseBuffer(g.engine.ctx, g.takes.original.buffer));
+    return {
+      flagged: confused.mirrored,
+      // If this round's real result happened to be flagged, the hint must show.
+      hintConsistent: !g.result.mirrored || g.result.score >= 70
+        || document.getElementById('result-quip').textContent.includes('forwards'),
+    };
+  });
+  check('a forwards-repeat of this round\'s own take is detected', mirror.flagged);
+  check('a flagged result shows the forwards hint', mirror.hintConsistent);
+
+  // Both lanes of the comparison must be visible — the old overlay painted the
+  // attempt on top of the original, hiding it wherever the attempt had energy.
+  const lanes = await page.evaluate(() => {
+    const c = document.getElementById('compare-wave');
+    const g = c.getContext('2d');
+    const mid = Math.floor(c.height / 2);
+    const count = (y0, y1) => {
+      const px = g.getImageData(0, y0, c.width, y1 - y0).data;
+      let lit = 0;
+      for (let i = 3; i < px.length; i += 4) if (px[i] > 0) lit++;
+      return lit;
+    };
+    return { top: count(0, mid - 4), bottom: count(mid + 4, c.height) };
+  });
+  check('both takes are visible in the comparison, neither hidden',
+    lanes.top > 200 && lanes.bottom > 200, JSON.stringify(lanes));
   check('the round was saved', !!shown.stored && JSON.parse(shown.stored).rounds === 1);
 
   check('microphone released after the round',

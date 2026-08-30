@@ -99,8 +99,8 @@ export class Game {
     this.compareWave = new Waveform(this.el.compareWave);
     this.compareWave.setColors({
       bar: cssVar('--accent'),
-      played: cssVar('--accent'),
-      ghost: cssVar('--ghost'),
+      played: cssVar('--ink'),
+      ghost: cssVar('--muted'),
     });
 
     this.el.helpBtn.addEventListener('click', () => {
@@ -540,11 +540,17 @@ export class Game {
     const tier = [...COPY.scoreTiers].reverse().find((t) => score >= t.minScore) || COPY.scoreTiers[0];
     this.el.resultKicker.textContent = COPY.microcopy.resultKicker;
     this.el.resultTitle.textContent = tier.title;
-    this.el.resultQuip.textContent = tier.quip;
+    // The forwards-repeat is the one mistake worth naming: without the hint it
+    // reads as an inexplicably low score, which is exactly how it got reported.
+    // Only hint when the score is actually poor: a mirrored flag on a decent
+    // score means the detector is guessing, and the hint would just confuse.
+    this.el.resultQuip.textContent = (this.result.mirrored && score < 70)
+      ? COPY.microcopy.mirrorHint
+      : tier.quip;
     this.el.result.hidden = false;
 
-    this.compareWave.setGhost(this.takes.original.buffer);
-    this.compareWave.setBuffer(this.reversed.mimic);
+    // Original above the line, attempt below — mirrored, never overlapping.
+    this.compareWave.setDuel(this.takes.original.buffer, this.reversed.mimic);
 
     // Count up rather than snapping: the number is the payoff of the round.
     const CIRCUMFERENCE = 327;

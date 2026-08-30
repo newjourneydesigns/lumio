@@ -466,6 +466,17 @@ export function scoreAttempt(original, mimicReversed) {
   // there is nothing to normalise against.
   if (!isFinite(baseline) || baseline <= DEGENERATE_CHANCE) return fail('no-alignment');
 
+  // The classic confusion: the player says the phrase FORWARDS at the mimic
+  // step instead of copying the gibberish. Reversed, that lands as a mirror
+  // image of the original — and if the attempt aligns far better against the
+  // original played backwards than against the original itself, that is what
+  // happened. Frame-order reversal is a good enough mirror for this test.
+  // Thresholds measured on the fixtures: genuine attempts sit at
+  // mirror/cost >= 1.37 (the mirror fits WORSE), forwards-repeats at <= 0.79
+  // even with heavy human variation, and unrelated babble fails both clauses.
+  const mirrorCost = dtwDistance(a.frames, b.frames.slice().reverse());
+  const mirrored = mirrorCost < cost * 0.9 && mirrorCost < baseline * 0.55;
+
   const ratio = cost / baseline;
   // Normalised so that ratio 0 maps to exactly 1. Without this the logistic
   // tops out a couple of points short and a flawless round never reads as one.
@@ -481,6 +492,9 @@ export function scoreAttempt(original, mimicReversed) {
     score: Math.max(SCORE_FLOOR, Math.min(SCORE_CEILING, score)),
     ratio,
     reason: null,
+    // True when the attempt matches the MIRROR of the original far better than
+    // the original — the signature of saying the phrase forwards at step 3.
+    mirrored,
     // A human cannot get this close. It means someone held the phone up to the
     // playback — which is a fine joke, not something to accuse anyone of.
     suspicious: ratio < 0.05,
@@ -490,5 +504,5 @@ export function scoreAttempt(original, mimicReversed) {
 const logistic = (ratio) => 1 / (1 + Math.exp((ratio - R50) / RK));
 
 function fail(reason) {
-  return { score: 0, ratio: Infinity, reason, suspicious: false };
+  return { score: 0, ratio: Infinity, reason, suspicious: false, mirrored: false };
 }

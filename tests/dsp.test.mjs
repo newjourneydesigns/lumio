@@ -183,3 +183,22 @@ test('scoring a pair costs well under the frame budget', () => {
   console.log('   score time    ->', each.toFixed(1), 'ms');
   assert.ok(each < 300, `scoring took ${each.toFixed(0)}ms`);
 });
+
+test('saying the phrase forwards is detected, real attempts are not', () => {
+  // The classic confusion: the player repeats the phrase forwards at the mimic
+  // step. Reversed, it lands as a mirror of the original and used to read as
+  // an inexplicably low score.
+  const confusedExact = scoreAttempt(forward, reverse(forward));
+  const confusedHuman = scoreAttempt(forward, reverse(jitter(forward, { noise: 0.012, rate: 0.9, gain: 0.6 })));
+  const confusedFast = scoreAttempt(forward, reverse(jitter(forward, { noise: 0.02, rate: 1.15, gain: 1.3 })));
+  assert.equal(confusedExact.mirrored, true, 'exact forwards repeat not flagged');
+  assert.equal(confusedHuman.mirrored, true, 'human forwards repeat not flagged');
+  assert.equal(confusedFast.mirrored, true, 'fast forwards repeat not flagged');
+
+  const perfect = scoreAttempt(forward, reverse(reversed));
+  const good = scoreAttempt(forward, reverse(jitter(reversed, { noise: 0.012, rate: 0.9, gain: 0.6 })));
+  const babble = scoreAttempt(forward, wrong);
+  assert.equal(perfect.mirrored, false, 'perfect attempt falsely flagged');
+  assert.equal(good.mirrored, false, 'good attempt falsely flagged');
+  assert.equal(babble.mirrored, false, 'babble falsely flagged');
+});

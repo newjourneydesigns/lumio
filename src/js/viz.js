@@ -49,6 +49,7 @@ export class Waveform {
     this.ctx = canvas.getContext('2d');
     this.peaks = null;
     this.ghost = null;
+    this.duel = null;
     this.progress = 0;
     this.live = null;
     this.colors = { bar: '#888', played: '#fff', ghost: 'rgba(255,255,255,.22)' };
@@ -70,15 +71,33 @@ export class Waveform {
   /** Shows a finished recording. `mirrored` flips it left-to-right. */
   setBuffer(buffer, { mirrored = false } = {}) {
     this.live = null;
+    this.duel = null;
     this.peaks = buffer ? computePeaks(buffer) : null;
     if (this.peaks && mirrored) this.peaks = Float32Array.from(this.peaks).reverse();
     this.progress = 0;
     this.draw();
   }
 
-  /** A second waveform drawn faintly behind, for "how close did I get". */
-  setGhost(buffer) {
-    this.ghost = buffer ? computePeaks(buffer) : null;
+  /**
+   * Comparison mode: two takes mirrored around a centre line — the first
+   * drawn upward, the second downward, like a reflection. Overlaying them in
+   * the same slots was tried first and painted one on top of the other, so
+   * wherever the attempt had energy the original was simply invisible.
+   *
+   * Widths are proportional to duration (both left-aligned), so a short take
+   * no longer gets silently stretched to match a long one.
+   */
+  setDuel(topBuffer, bottomBuffer) {
+    this.live = null;
+    this.peaks = null;
+    this.progress = 0;
+    if (!topBuffer || !bottomBuffer) { this.duel = null; this.draw(); return; }
+    const longest = Math.max(topBuffer.duration, bottomBuffer.duration);
+    const buckets = (b) => Math.max(24, Math.round(220 * (b.duration / longest)));
+    this.duel = {
+      top: computePeaks(topBuffer, buckets(topBuffer)),
+      bottom: computePeaks(bottomBuffer, buckets(bottomBuffer)),
+    };
     this.draw();
   }
 
@@ -86,6 +105,7 @@ export class Waveform {
   startLive(buckets = 220) {
     this.peaks = null;
     this.ghost = null;
+    this.duel = null;
     this.live = new Float32Array(buckets);
     this._liveCount = 0;
     this.draw();
@@ -133,6 +153,31 @@ export class Waveform {
 
     const series = this.live || this.peaks;
     const mid = height / 2;
+
+    if (this.duel) {
+      const half = height * 0.46;
+      const lane = (peaks, color, dir) => {
+        const slot = width / 220;
+        const barWidth = Math.max(dpr, slot * 0.62);
+        ctx.fillStyle = color;
+        for (let i = 0; i < peaks.length; i++) {
+          const h = Math.max(dpr * 1.5, peaks[i] * half);
+          const x = i * slot + (slot - barWidth) / 2;
+          const y = dir < 0 ? mid - 2 * dpr - h : mid + 2 * dpr;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(x, y, barWidth, h, barWidth / 2);
+          else ctx.rect(x, y, barWidth, h);
+          ctx.fill();
+        }
+      };
+      lane(this.duel.top, this.colors.ghost, -1);
+      lane(this.duel.bottom, this.colors.bar, 1);
+      ctx.fillStyle = this.colors.played;
+      ctx.globalAlpha = 0.6;
+      ctx.fillRect(0, mid - dpr / 2, width, dpr);
+      ctx.globalAlpha = 1;
+      return;
+    }
 
     if (!series) {
       // Resting state: a flat line, so the box never looks broken.

@@ -87,6 +87,7 @@ export const COPY = {
     silentSwitch: 'Hearing nothing? Check the silent switch on the side of your phone, and turn the volume up.',
     interrupted: 'Something interrupted that take. Give it another go.',
     suspicious: 'That was flawless. Suspiciously flawless. We are watching you.',
+    mirrorHint: 'Plot twist: it looks like you said the phrase forwards. Copy the GIBBERISH — weird noises and all.',
     howToPlay: [
       '<strong>Say a short phrase</strong> out loud. Two or three words.',
       '<strong>Listen to it backwards.</strong> It will sound like alien nonsense.',

@@ -8,7 +8,7 @@
 // Bumped whenever the caching strategy changes. Every other cache is deleted
 // on activate, which is also how a client carrying a poisoned or mixed-version
 // cache from an earlier worker gets rescued.
-const CACHE = 'sdrawkcab-v7';
+const CACHE = 'sdrawkcab-v8';
 
 // Fonts and images are content-stable: if one ever changes it changes name.
 // Everything else is code, and code must never be served stale.
