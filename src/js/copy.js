@@ -23,7 +23,7 @@ export const COPY = {
       buttonLabel: 'Say It Forwards',
       buttonLabelActive: 'Listening… tap to stop',
       buttonLabelDone: 'Hear it again',
-      helperText: 'Say a short phrase out loud, like a normal person. This is the easy bit.',
+      helperText: 'Say your own phrase, or use one of ours. Two or three words works best.',
       doneToast: 'Got it. Beautiful work.',
     },
     {
