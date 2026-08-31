@@ -52,16 +52,6 @@ export const COPY = {
     },
   ],
 
-  scoreTiers: [
-    { minScore: 0, title: 'Glorious Nonsense', quip: 'Not one recognisable word. Genuinely impressive in its own way.' },
-    { minScore: 30, title: 'Confident Gibberish', quip: 'Something was in there. We are choosing to believe it was a word.' },
-    { minScore: 45, title: 'Backwards Apprentice', quip: 'The shape was right. The sounds were freelancing.' },
-    { minScore: 60, title: 'Fluent In Nonsense', quip: 'That is a real attempt. Your mouth is learning.' },
-    { minScore: 75, title: 'Reverse Talker', quip: 'Suspiciously good. Do you do this professionally?' },
-    { minScore: 88, title: 'Backwards Wizard', quip: 'Your phrase came home. Play this one back for people.' },
-    { minScore: 96, title: 'Unholy Mouth', quip: 'That should not be possible with a human tongue.' },
-  ],
-
   promptPhrases: PROMPT_PHRASES,
 
   microcopy: {
@@ -78,16 +68,14 @@ export const COPY = {
     goAgain: 'New round, new phrase',
     sameAgain: 'Same phrase, try again',
     shareButton: 'Share with your friends',
-    shareText: 'I scored {score} trying to talk backwards. Beat that.',
+    shareText: 'I tried to talk backwards. Listen to what came back.',
     downloaded: 'Saved. Send it to someone.',
     copied: 'Copied',
-    resultKicker: 'The verdict',
-    streak: 'Best {best} · {rounds} round{s} played',
+    resultKicker: 'The reveal',
+    revealTitle: 'That came out of your mouth.',
     tooQuiet: "We couldn't hear that one. Try again, louder.",
     silentSwitch: 'Hearing nothing? Check the silent switch on the side of your phone, and turn the volume up.',
     interrupted: 'Something interrupted that take. Give it another go.',
-    suspicious: 'That was flawless. Suspiciously flawless. We are watching you.',
-    mirrorHint: 'Plot twist: it looks like you said the phrase forwards. Copy the GIBBERISH — weird noises and all.',
     howToPlay: [
       '<strong>Say a short phrase</strong> out loud. Two or three words.',
       '<strong>Listen to it backwards.</strong> It will sound like alien nonsense.',

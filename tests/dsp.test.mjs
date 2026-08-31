@@ -1,204 +1,53 @@
-// Node-side checks for the scoring maths. No browser needed: we shim the two
-// AudioBuffer methods dsp.js actually touches.
+// Checks for the capture-side signal utilities. The scoring maths that used to
+// live here was removed along with the score itself — the reveal is the game.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scoreAttempt, dtwDistance, chanceDistance, featurise, logMelFrames, trimSilence, resample } from '../src/js/dsp.js';
+import { trimSilence, resample } from '../src/js/dsp.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const fx = (n) => join(HERE, 'fixtures', n);
 
-function readWav(path) {
-  const buf = readFileSync(path);
+function readWav(name) {
+  const buf = readFileSync(join(HERE, 'fixtures', name));
   const rate = buf.readUInt32LE(24);
-  const bits = buf.readUInt16LE(34);
-  const channels = buf.readUInt16LE(22);
-  assert.equal(bits, 16, 'fixtures are 16-bit');
   const n = (buf.length - 44) / 2;
   const data = new Float32Array(n);
   for (let i = 0; i < n; i++) data[i] = buf.readInt16LE(44 + i * 2) / 32768;
-  return audioBuffer(data, rate, channels);
+  return { data, rate };
 }
 
-function audioBuffer(data, sampleRate, numberOfChannels = 1) {
-  return { length: data.length, sampleRate, numberOfChannels, getChannelData: () => data };
-}
-
-const reverse = (ab) => audioBuffer(Float32Array.from(ab.getChannelData(0)).reverse(), ab.sampleRate);
-
-// Deterministic pseudo-noise, so runs are reproducible.
-function jitter(ab, { noise = 0, rate = 1, gain = 1 } = {}) {
-  const src = ab.getChannelData(0);
-  const out = new Float32Array(Math.floor(src.length / rate));
-  let seed = 12345;
-  for (let i = 0; i < out.length; i++) {
-    const pos = i * rate;
-    const k = Math.floor(pos);
-    const f = pos - k;
-    const v = (src[k] || 0) * (1 - f) + (src[k + 1] || 0) * f;
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    out[i] = v * gain + (seed / 0x7fffffff - 0.5) * 2 * noise;
-  }
-  return audioBuffer(out, ab.sampleRate);
-}
-
-const forward = readWav(fx('phrase-forward.wav'));
-const reversed = readWav(fx('phrase-reversed.wav'));
-const wrong = readWav(fx('phrase-wrong.wav'));
-const silence = readWav(fx('silence.wav'));
+const forward = readWav('phrase-forward.wav');
+const reversed = readWav('phrase-reversed.wav');
 
 test('reversing the reversed fixture recovers the original', () => {
-  const back = reverse(reversed).getChannelData(0);
-  const orig = forward.getChannelData(0);
+  const back = Float32Array.from(reversed.data).reverse();
   let maxDiff = 0;
-  for (let i = 0; i < orig.length; i++) maxDiff = Math.max(maxDiff, Math.abs(orig[i] - back[i]));
+  for (let i = 0; i < forward.data.length; i++) {
+    maxDiff = Math.max(maxDiff, Math.abs(forward.data[i] - back[i]));
+  }
   assert.ok(maxDiff < 1e-4, `round trip drifted by ${maxDiff}`);
 });
 
-test('a perfect mimic scores near the ceiling', () => {
-  const { score } = scoreAttempt(forward, reverse(reversed));
-  console.log('   perfect mimic ->', score);
-  assert.ok(score >= 90, `expected >= 90, got ${score}`);
-});
-
-// Absolute score bands cannot be pinned down against synthetic fixtures — that
-// needs real voices. What must hold, and what these assert, is the ORDERING and
-// the invariances: better attempts always score higher, and the things a player
-// cannot control (loudness, room noise, speaking pace) must not move the score.
-test('a good-but-human mimic still scores well', () => {
-  // Noisier, 12% slower, quieter — what a real decent attempt looks like.
-  const attempt = reverse(jitter(reversed, { noise: 0.012, rate: 0.88, gain: 0.55 }));
-  const { score } = scoreAttempt(forward, attempt);
-  console.log('   good mimic    ->', score);
-  assert.ok(score >= 60, `expected >= 60, got ${score}`);
-});
-
-test('scores are ordered: perfect > good > sloppy, and good > wrong phrase', () => {
-  const perfect = scoreAttempt(forward, reverse(reversed)).score;
-  const good = scoreAttempt(forward, reverse(jitter(reversed, { noise: 0.012, rate: 0.88, gain: 0.55 }))).score;
-  const sloppy = scoreAttempt(forward, reverse(jitter(reversed, { noise: 0.03, rate: 0.72, gain: 0.4 }))).score;
-  const wrongScore = scoreAttempt(forward, wrong).score;
-  console.log('   perfect/good/sloppy/wrong ->', perfect, good, sloppy, wrongScore);
-  assert.ok(perfect > good, `perfect ${perfect} should beat good ${good}`);
-  assert.ok(good > sloppy, `good ${good} should beat sloppy ${sloppy}`);
-  assert.ok(good - wrongScore >= 15, `good ${good} should clear wrong ${wrongScore} by 15+`);
-});
-
-test('nobody is ever told they scored zero for trying', () => {
-  const sloppy = scoreAttempt(forward, jitter(wrong, { noise: 0.05, rate: 0.6 })).score;
-  console.log('   worst case    ->', sloppy);
-  assert.ok(sloppy >= 18, `floor breached: ${sloppy}`);
-});
-
-test('silence is not a winning strategy', () => {
-  const { score, reason } = scoreAttempt(forward, silence);
-  console.log('   silence       ->', score, reason);
-  assert.equal(reason, 'mimic-silent');
-  assert.equal(score, 0);
-});
-
-test('shouting does not beat speaking', () => {
-  const quiet = scoreAttempt(forward, reverse(jitter(reversed, { gain: 0.15 }))).score;
-  const loud = scoreAttempt(forward, reverse(jitter(reversed, { gain: 3.5 }))).score;
-  console.log('   quiet/loud    ->', quiet, loud);
-  assert.ok(Math.abs(quiet - loud) <= 6, `loudness moved the score by ${Math.abs(quiet - loud)}`);
-});
-
-test('speaking faster or slower is forgiven', () => {
-  const base = scoreAttempt(forward, reverse(reversed)).score;
-  for (const rate of [0.8, 0.9, 1.1, 1.25]) {
-    const s = scoreAttempt(forward, reverse(jitter(reversed, { rate }))).score;
-    assert.ok(base - s <= 25, `rate ${rate} cost ${base - s} points`);
-  }
-});
-
-test('room noise is forgiven', () => {
-  const base = scoreAttempt(forward, reverse(reversed)).score;
-  const noisy = scoreAttempt(forward, reverse(jitter(reversed, { noise: 0.012 }))).score;
-  console.log('   clean/noisy   ->', base, noisy);
-  assert.ok(base - noisy <= 15, `noise cost ${base - noisy} points`);
-});
-
-test('scoring is deterministic', () => {
-  const a = scoreAttempt(forward, reverse(reversed)).score;
-  const b = scoreAttempt(forward, reverse(reversed)).score;
-  assert.equal(a, b);
-});
-
 test('trimSilence drops the dead air and keeps the speech', () => {
-  const at16k = resample(forward.getChannelData(0), forward.sampleRate, 16000);
+  const at16k = resample(forward.data, forward.rate, 16000);
   const trimmed = trimSilence(at16k);
   assert.ok(trimmed.length < at16k.length, 'nothing was trimmed');
   assert.ok(trimmed.length > at16k.length * 0.4, 'trimmed too aggressively');
 });
 
-test('an empty take is reported, not crashed on', () => {
-  const empty = audioBuffer(new Float32Array(0), 48000);
-  assert.equal(scoreAttempt(empty, forward).reason, 'original-silent');
-  assert.equal(featurise(empty).empty, true);
-  assert.equal(dtwDistance([], []), Infinity);
+test('trimSilence never returns audio for pure silence', () => {
+  assert.equal(trimSilence(new Float32Array(32000)).length, 0);
 });
 
-test('the chance baseline is deterministic and beats the real distance', () => {
-  const a = featurise(forward).frames;
-  const b = featurise(reverse(reversed)).frames;
-  const first = chanceDistance(a, b);
-  const second = chanceDistance(a, b);
-  assert.equal(first, second, 'baseline must be bit-reproducible across runs');
-  assert.ok(first > dtwDistance(a, b), 'scrambled content should cost more than the real thing');
+test('trimSilence survives a take with no pauses', () => {
+  // Continuous tone: nothing is quiet, so nothing should be cut to nothing.
+  const tone = new Float32Array(16000).map((_, i) => Math.sin(i * 0.09) * 0.4);
+  assert.ok(trimSilence(tone).length > tone.length * 0.8);
 });
 
-test('a wrong phrase lands near the floor, not mid-table', () => {
-  const { score, ratio } = scoreAttempt(forward, wrong);
-  console.log('   wrong phrase  ->', score, 'ratio', ratio.toFixed(3));
-  assert.ok(score <= 30, `a wrong phrase should not score ${score}`);
-});
-
-test('holding the phone up to the playback is flagged, not punished', () => {
-  const cheated = scoreAttempt(forward, reverse(reversed));
-  assert.equal(cheated.suspicious, true);
-  assert.ok(cheated.score >= 95, 'still award the points, just flag it');
-  const honest = scoreAttempt(forward, reverse(jitter(reversed, { noise: 0.012, rate: 0.88 })));
-  assert.equal(honest.suspicious, false);
-});
-
-test('every mel filter holds at least one FFT bin', () => {
-  // An empty filter emits a constant and quietly poisons every frame.
-  const frames = logMelFrames(new Float32Array(16000).map((_, i) => Math.sin(i * 0.05) * 0.3));
-  assert.ok(frames.length > 0);
-  for (const frame of frames) {
-    for (let m = 0; m < frame.length; m++) {
-      assert.ok(Number.isFinite(frame[m]), `mel band ${m} produced ${frame[m]}`);
-    }
-  }
-});
-
-test('scoring a pair costs well under the frame budget', () => {
-  const attempt = reverse(jitter(reversed, { noise: 0.012, rate: 0.9 }));
-  const start = performance.now();
-  for (let i = 0; i < 5; i++) scoreAttempt(forward, attempt);
-  const each = (performance.now() - start) / 5;
-  console.log('   score time    ->', each.toFixed(1), 'ms');
-  assert.ok(each < 300, `scoring took ${each.toFixed(0)}ms`);
-});
-
-test('saying the phrase forwards is detected, real attempts are not', () => {
-  // The classic confusion: the player repeats the phrase forwards at the mimic
-  // step. Reversed, it lands as a mirror of the original and used to read as
-  // an inexplicably low score.
-  const confusedExact = scoreAttempt(forward, reverse(forward));
-  const confusedHuman = scoreAttempt(forward, reverse(jitter(forward, { noise: 0.012, rate: 0.9, gain: 0.6 })));
-  const confusedFast = scoreAttempt(forward, reverse(jitter(forward, { noise: 0.02, rate: 1.15, gain: 1.3 })));
-  assert.equal(confusedExact.mirrored, true, 'exact forwards repeat not flagged');
-  assert.equal(confusedHuman.mirrored, true, 'human forwards repeat not flagged');
-  assert.equal(confusedFast.mirrored, true, 'fast forwards repeat not flagged');
-
-  const perfect = scoreAttempt(forward, reverse(reversed));
-  const good = scoreAttempt(forward, reverse(jitter(reversed, { noise: 0.012, rate: 0.9, gain: 0.6 })));
-  const babble = scoreAttempt(forward, wrong);
-  assert.equal(perfect.mirrored, false, 'perfect attempt falsely flagged');
-  assert.equal(good.mirrored, false, 'good attempt falsely flagged');
-  assert.equal(babble.mirrored, false, 'babble falsely flagged');
+test('resample preserves duration proportionally', () => {
+  const out = resample(forward.data, 48000, 16000);
+  assert.ok(Math.abs(out.length - forward.data.length / 3) < 4);
 });

@@ -12,26 +12,14 @@
 
 import { AudioEngine, AudioError, encodeWav, environmentProblem } from './audio.js';
 import { Waveform } from './viz.js';
-import { scoreAttempt } from './dsp.js';
 import { burst } from './confetti.js';
 import { makeSfx } from './sfx.js';
 import { COPY } from './copy.js';
 
 const MAX_RECORD_SECONDS = 8;
 const SLOW_RATE = 0.7;
-const STORE_KEY = 'sdrawkcab:v1';
 
 const STEP_KIND = ['record', 'play', 'record', 'play'];
-
-/** localStorage, but it never takes the app down with it. */
-const store = {
-  read() {
-    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
-  },
-  write(value) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(value)); } catch { /* private mode */ }
-  },
-};
 
 export class Game {
   constructor() {
@@ -42,12 +30,10 @@ export class Game {
     this._pendingPlay = null;
     this.takes = { original: null, mimic: null };
     this.reversed = { original: null, mimic: null };
-    this.result = null;
     this.resultShown = false;
     this.waves = {};
     this.busy = false;
     this.el = {};
-    this.stats = store.read();
     this._timer = null;
   }
 
@@ -60,15 +46,11 @@ export class Game {
       tagline: $('tagline'),
       result: $('result'),
       resultKicker: $('result-kicker'),
-      scoreFill: $('score-fill'),
-      scoreNumber: $('score-number'),
       resultTitle: $('result-title'),
-      resultQuip: $('result-quip'),
       compareWave: $('compare-wave'),
       againBtn: $('again-btn'),
       retryBtn: $('retry-btn'),
       shareBtn: $('share-btn'),
-      streak: $('streak'),
       toast: $('toast'),
       confetti: $('confetti'),
       helpBtn: $('help-btn'),
@@ -124,7 +106,7 @@ export class Game {
     this.el.helpClose.addEventListener('click', () => this.el.helpSheet.close());
     this.el.blockerClose.addEventListener('click', () => this.el.blockerSheet.close());
     this.el.againBtn.addEventListener('click', () => this.reset());
-    // The thing everyone actually wants after a rough score: another go at the
+    // The thing everyone actually wants after a rough attempt: another go at the
     // same phrase. redoFrom(3) keeps the original take, so the gibberish to
     // re-listen to is still one tap away on step 2.
     this.el.retryBtn.addEventListener('click', () => {
@@ -142,7 +124,6 @@ export class Game {
     const problem = environmentProblem();
     if (problem) this.showBlocker(problem);
 
-    this.updateStreak();
     this.setStep(1);
   }
 
@@ -429,7 +410,6 @@ export class Game {
 
     this.toast(COPY.steps[n - 1].doneToast);
     this.sfx.advance();
-    if (n === 3) this.computeScore();
     this.setStep(n + 1);
   }
 
@@ -438,7 +418,7 @@ export class Game {
     if (!buffer) return;
     const heard = await this.playBuffer(n, buffer);
 
-    // Unlocking step 3 and revealing the score are the only irreversible
+    // Unlocking step 3 and the reveal are the only irreversible
     // transitions in the game, so neither may fire off a clip that was cut
     // short or never started. playBuffer reports what actually happened.
     if (!heard) return;
@@ -447,7 +427,7 @@ export class Game {
       // Listening once is what unlocks the imitation step.
       if (this.step === 2) this.setStep(3);
     } else if (n === 4 && !this.resultShown) {
-      this.showResult();
+      this.showReveal();
     }
   }
 
@@ -520,83 +500,29 @@ export class Game {
 
   /* ---------------- scoring + result ---------------- */
 
-  computeScore() {
-    try {
-      this.result = scoreAttempt(this.takes.original.buffer, this.reversed.mimic);
-    } catch {
-      this.result = null;
-    }
-  }
-
-  showResult() {
-    if (!this.result) return;
-    const { score, reason } = this.result;
-    if (reason) {
-      this.toast(COPY.microcopy.tooQuiet);
-      return;
-    }
-
+  /**
+   * The reveal. There used to be a similarity score here — a ring, a rank and
+   * a quip — but hearing your own gibberish walk back out as (roughly) the
+   * phrase IS the payoff, and a number after the punchline just graded the
+   * joke. The comparison stays because seeing the two shapes line up is part
+   * of the laugh; nothing judges them any more.
+   */
+  showReveal() {
     this.resultShown = true;
-    const tier = [...COPY.scoreTiers].reverse().find((t) => score >= t.minScore) || COPY.scoreTiers[0];
     this.el.resultKicker.textContent = COPY.microcopy.resultKicker;
-    this.el.resultTitle.textContent = tier.title;
-    // The forwards-repeat is the one mistake worth naming: without the hint it
-    // reads as an inexplicably low score, which is exactly how it got reported.
-    // Only hint when the score is actually poor: a mirrored flag on a decent
-    // score means the detector is guessing, and the hint would just confuse.
-    this.el.resultQuip.textContent = (this.result.mirrored && score < 70)
-      ? COPY.microcopy.mirrorHint
-      : tier.quip;
+    this.el.resultTitle.textContent = COPY.microcopy.revealTitle;
     this.el.result.hidden = false;
 
     // Original above the line, attempt below — mirrored, never overlapping.
     this.compareWave.setDuel(this.takes.original.buffer, this.reversed.mimic);
 
-    // Count up rather than snapping: the number is the payoff of the round.
-    const CIRCUMFERENCE = 327;
-    this.el.scoreFill.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - score / 100));
-    this.el.scoreFill.style.stroke = score >= 80 ? cssVar('--success')
-      : score >= 55 ? cssVar('--warn') : cssVar('--accent');
-    this.countTo(score);
-
     this.sfx.reveal();
-    if (score >= 80) burst(this.el.confetti);
-    // A human cannot land this close by mouth alone — somebody held the phone
-    // up to the speaker. Worth a nudge, not an accusation.
-    if (this.result.suspicious) this.toast(COPY.microcopy.suspicious);
-
-    const best = Math.max(this.stats.best || 0, score);
-    this.stats = { ...this.stats, best, rounds: (this.stats.rounds || 0) + 1, last: score };
-    store.write(this.stats);
-    this.updateStreak();
+    burst(this.el.confetti);
 
     this.el.result.scrollIntoView({
       behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       block: 'center',
     });
-  }
-
-  countTo(score) {
-    const node = this.el.scoreNumber;
-    if (prefersReducedMotion()) { node.textContent = String(score); return; }
-    const start = performance.now();
-    const tick = () => {
-      const p = Math.min(1, (performance.now() - start) / 1100);
-      // Ease out so it decelerates into the final number.
-      node.textContent = String(Math.round(score * (1 - (1 - p) ** 3)));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }
-
-  updateStreak() {
-    const { best, rounds } = this.stats;
-    this.el.streak.textContent = rounds
-      ? COPY.microcopy.streak
-        .replace('{best}', best)
-        .replace('{rounds}', rounds)
-        .replace('{s}', rounds === 1 ? '' : 's')
-      : '';
   }
 
   /* ---------------- sharing ---------------- */
@@ -605,7 +531,7 @@ export class Game {
     if (!this.reversed.mimic) return;
     const blob = encodeWav(this.reversed.mimic);
     const file = new File([blob], 'sdrawkcab.wav', { type: 'audio/wav' });
-    const text = COPY.microcopy.shareText.replace('{score}', this.result ? this.result.score : '');
+    const text = COPY.microcopy.shareText;
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
@@ -640,7 +566,6 @@ export class Game {
       this.waves[3].setBuffer(null);
       this.waves[4].setBuffer(null);
     }
-    this.result = null;
     this.resultShown = false;
     this.el.result.hidden = true;
     this.setStep(n);

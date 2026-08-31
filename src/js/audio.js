@@ -552,6 +552,22 @@ export class AudioEngine {
     // are different clips.
     merged = trimForTake(merged, rec.sampleRate);
 
+    // Peak-normalise the take. Auto gain control is deliberately disabled at
+    // capture (it would let shouting game the old scorer and it chews on
+    // reversed speech), which leaves phone recordings peaking at 10-20% of
+    // full scale — everything sounded quiet. Boost is capped so a near-silent
+    // room cannot be amplified into a hiss recording, and 0.92 leaves headroom
+    // so nothing clips downstream.
+    let takePeak = 0;
+    for (let i = 0; i < merged.length; i++) {
+      const v = Math.abs(merged[i]);
+      if (v > takePeak) takePeak = v;
+    }
+    const gain = Math.min(8, 0.92 / Math.max(takePeak, 1e-4));
+    if (gain > 1) {
+      for (let i = 0; i < merged.length; i++) merged[i] *= gain;
+    }
+
     const buffer = this.ctx.createBuffer(1, merged.length, rec.sampleRate);
     buffer.copyToChannel(merged, 0);
     rec.resolve(new Take(buffer));

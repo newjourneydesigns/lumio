@@ -327,7 +327,7 @@ try {
   check('the output bus is not muted', await page.evaluate(() => window.__sdrawkcab.engine.out.gain.value === 1));
 
   // Cutting a clip short must NOT advance the game: unlocking step 3 and
-  // revealing the score are the only irreversible transitions there are.
+  // the reveal are the only irreversible transitions there are.
   const cutShort = await page.evaluate(async () => {
     const g = window.__sdrawkcab;
     const p = g.doPlay(2);
@@ -426,45 +426,16 @@ try {
   await record(3, 1600);
   check('step 3 captured a mimic', await page.evaluate(() => !!window.__sdrawkcab.takes.mimic));
   check('step 4 unlocked', (await stepState(4)) === 'active');
-  check('a score was computed', await page.evaluate(() => !!window.__sdrawkcab.result));
-
   // ---- step 4
   await playThrough(4);
   await page.waitForSelector('#result:not([hidden])', { timeout: 8000 });
-  // The number counts up over about a second; wait for it to settle rather
-  // than catching it mid-animation.
-  await page.waitForFunction(
-    () => Number(document.getElementById('score-number').textContent) === window.__sdrawkcab.result.score,
-    null, { timeout: 5000 },
-  );
   const shown = await page.evaluate(() => ({
-    score: Number(document.getElementById('score-number').textContent),
+    kicker: document.getElementById('result-kicker').textContent,
     title: document.getElementById('result-title').textContent,
-    quip: document.getElementById('result-quip').textContent,
-    stored: localStorage.getItem('sdrawkcab:v1'),
+    scoreElements: document.querySelectorAll('#score-ring, #score-number, .streak').length,
   }));
-  check('result panel shows a score', shown.score >= 18 && shown.score <= 99, String(shown.score));
-  check('result has a rank and a quip', !!shown.title && !!shown.quip, shown.title);
-
-  // The classic confused player says the phrase forwards instead of copying
-  // the gibberish. Built deterministically from the round's own original take
-  // (the fake mic loops its fixture, so the round's two takes are different
-  // slices and can't be used as an exact repeat).
-  const mirror = await page.evaluate(async () => {
-    const g = window.__sdrawkcab;
-    const { scoreAttempt } = await import('./js/dsp.js');
-    const { reverseBuffer } = await import('./js/audio.js');
-    const confused = scoreAttempt(g.takes.original.buffer,
-      reverseBuffer(g.engine.ctx, g.takes.original.buffer));
-    return {
-      flagged: confused.mirrored,
-      // If this round's real result happened to be flagged, the hint must show.
-      hintConsistent: !g.result.mirrored || g.result.score >= 70
-        || document.getElementById('result-quip').textContent.includes('forwards'),
-    };
-  });
-  check('a forwards-repeat of this round\'s own take is detected', mirror.flagged);
-  check('a flagged result shows the forwards hint', mirror.hintConsistent);
+  check('the reveal shows its title', !!shown.kicker && !!shown.title, shown.title);
+  check('no score UI remains', shown.scoreElements === 0);
 
   // Both lanes of the comparison must be visible — the old overlay painted the
   // attempt on top of the original, hiding it wherever the attempt had energy.
@@ -482,7 +453,21 @@ try {
   });
   check('both takes are visible in the comparison, neither hidden',
     lanes.top > 200 && lanes.bottom > 200, JSON.stringify(lanes));
-  check('the round was saved', !!shown.stored && JSON.parse(shown.stored).rounds === 1);
+
+  // Takes are peak-normalised at capture, so playback is loud regardless of
+  // how quiet the mic hardware runs.
+  const loud = await page.evaluate(() => {
+    const peak = (b) => {
+      const d = b.getChannelData(0);
+      let p = 0;
+      for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i]));
+      return p;
+    };
+    const g = window.__sdrawkcab;
+    return { original: +peak(g.takes.original.buffer).toFixed(3), mimic: +peak(g.takes.mimic.buffer).toFixed(3) };
+  });
+  check('takes are normalised to near full scale', loud.original > 0.85 && loud.original <= 0.95
+    && loud.mimic > 0.85 && loud.mimic <= 0.95, JSON.stringify(loud));
 
   check('microphone released after the round',
     await page.evaluate(() => !window.__sdrawkcab.engine.stream));
@@ -510,11 +495,6 @@ try {
   check('tapping a finished record step replays it', before === after,
     `${before} -> ${after}`);
 
-  // ---- replaying the reveal must not count a second round
-  await playThrough(4);
-  await page.waitForTimeout(300);
-  check('replaying the reveal does not re-count the round',
-    await page.evaluate(() => JSON.parse(localStorage.getItem('sdrawkcab:v1')).rounds === 1));
 
   // A 404 must never be cached as the offline shell — the whole game would be
   // replaced by an error page for good.

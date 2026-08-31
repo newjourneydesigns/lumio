@@ -92,29 +92,23 @@ It also means no codec detection: Safari before 18.4 could only record
 `audio/mp4` while Chrome and Firefox emit `webm/opus`, and none of that
 fragmentation exists on this path.
 
-### Scoring
+### No score, on purpose
 
-The score compares your original recording against your imitation reversed. The
-two will never line up sample to sample — same speaker, but different pace,
-loudness and room noise — so:
+Earlier versions graded each attempt: a log-mel/DTW similarity scorer with a
+per-pair chance baseline, a ring, ranks, a best-score streak. It was removed
+deliberately — hearing your own gibberish walk back out as (roughly) the
+phrase is the payoff, and a number after the punchline just graded the joke.
+The mirrored comparison on the reveal stays, because seeing the two shapes
+line up is part of the laugh; nothing judges them. The scorer lives in git
+history if a scored mode ever returns.
 
-```
-resample to 16 kHz -> trim silence -> normalise loudness -> pre-emphasis
--> 25 ms frames -> log-mel spectrogram (26 bands) -> per-utterance CMVN
--> banded DTW on cosine distance
-```
+### Loudness
 
-The distance is then divided by a **chance baseline**: the same comparison run
-against a block-shuffled copy of your attempt, which destroys the order of the
-sounds while leaving your voice, your microphone and the room exactly as they
-were. Scoring that ratio rather than the raw distance is what stops the game
-feeling harsh on one phone and generous on another. A logistic maps the ratio
-onto 18–99.
-
-Measured on the test fixtures: a perfect match scores 99, a good-but-human
-attempt 78, a sloppy one 44, and a completely different phrase 19. Speaking
-louder, quieter, faster or slower barely moves it, which is the point — those
-are not the thing being judged.
+Takes are peak-normalised to 0.92 at capture. Auto gain control is
+deliberately disabled on the mic (it chews on reversed speech), which leaves
+raw phone recordings peaking at 10-20% of full scale — so without this,
+playback was noticeably quiet. The boost is capped at 8x so a silent room is
+never amplified into a hiss recording.
 
 ### Touch behaviour
 

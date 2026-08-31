@@ -63,7 +63,6 @@ button,
 .step,
 .wave-box,
 .phrase-picker,
-.score-ring,
 .confetti {
   touch-action: manipulation;
   -webkit-user-select: none;
@@ -328,29 +327,12 @@ body {
   color: var(--muted-dim);
 }
 
-.score-ring { position: relative; width: 148px; margin: 6px auto 10px; }
-.score-ring svg { width: 100%; height: auto; transform: rotate(-90deg); }
-.score-track { fill: none; stroke: var(--surface-2); stroke-width: 9; }
-.score-fill {
-  fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round;
-  stroke-dasharray: 327; stroke-dashoffset: 327;
-  transition: stroke-dashoffset 1.1s var(--ease-out), stroke .4s;
-}
-.score-number {
-  position: absolute; inset: 0;
-  display: grid; place-items: center;
-  font-family: var(--font-display);
-  font-size: 2.6rem;
-  font-variant-numeric: tabular-nums;
-}
-
 .result-title {
-  margin: 0 0 6px;
+  margin: 10px 0 18px;
   font-family: var(--font-display);
   font-size: 1.45rem;
   letter-spacing: -.01em;
 }
-.result-quip { margin: 0 0 18px; color: var(--muted); line-height: 1.5; }
 
 .compare { margin: 18px 0; text-align: left; }
 .compare-label {
@@ -370,7 +352,6 @@ body {
 .result-actions { display: flex; flex-direction: column; gap: 8px; }
 .result-actions .btn { margin-top: 0; }
 
-.streak { margin: 14px 0 0; font-size: .82rem; color: var(--muted-dim); }
 
 /* ---------------- toast + sheets ---------------- */
 
